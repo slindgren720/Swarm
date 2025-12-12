@@ -9,11 +9,20 @@ import Foundation
 
 // MARK: - Test Errors
 
-enum TestError: Error, Equatable {
+enum TestError: Error, Equatable, LocalizedError {
     case transient
     case permanent
     case network
     case timeout
+
+    var errorDescription: String? {
+        switch self {
+        case .transient: return "Transient error occurred"
+        case .permanent: return "Permanent error occurred"
+        case .network: return "Network error occurred"
+        case .timeout: return "Timeout error occurred"
+        }
+    }
 }
 
 // MARK: - Test Helpers (Thread-safe)
@@ -58,7 +67,7 @@ actor TestFlag {
 
 // MARK: - RetryPolicy Tests
 
-@Suite("RetryPolicy Tests", .disabled("Requires Phase 4 concurrency fixes"))
+@Suite("RetryPolicy Tests")
 struct RetryPolicyTests {
     
     // MARK: - Successful Execution Tests
@@ -143,7 +152,7 @@ struct RetryPolicyTests {
         } catch let error as ResilienceError {
             if case .retriesExhausted(let attempts, let lastError) = error {
                 #expect(attempts == 3) // initial + 2 retries
-                #expect(lastError.contains("permanent"))
+                #expect(lastError.contains("Permanent"))
             } else {
                 Issue.record("Expected retriesExhausted, got \(error)")
             }
@@ -354,7 +363,7 @@ struct RetryPolicyTests {
 
 // MARK: - CircuitBreaker Tests
 
-@Suite("CircuitBreaker Tests", .disabled("Requires Phase 4 concurrency fixes"))
+@Suite("CircuitBreaker Tests")
 struct CircuitBreakerTests {
     
     // MARK: - Initial State Tests
@@ -718,7 +727,7 @@ struct CircuitBreakerTests {
 
 // MARK: - CircuitBreakerRegistry Tests
 
-@Suite("CircuitBreakerRegistry Tests", .disabled("Requires Phase 4 concurrency fixes"))
+@Suite("CircuitBreakerRegistry Tests")
 struct CircuitBreakerRegistryTests {
     
     @Test("Registry creates and returns circuit breakers")
@@ -792,7 +801,7 @@ struct CircuitBreakerRegistryTests {
 
 // MARK: - FallbackChain Tests
 
-@Suite("FallbackChain Tests", .disabled("Requires Phase 4 concurrency fixes"))
+@Suite("FallbackChain Tests")
 struct FallbackChainTests {
     
     // MARK: - Success Tests
@@ -1103,7 +1112,7 @@ struct FallbackChainTests {
 
 // MARK: - Integration Tests
 
-@Suite("Resilience Integration Tests", .disabled("Requires Phase 4 concurrency fixes"))
+@Suite("Resilience Integration Tests")
 struct ResilienceIntegrationTests {
     
     @Test("RetryPolicy with CircuitBreaker integration")
