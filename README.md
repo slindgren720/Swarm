@@ -21,7 +21,7 @@ SwiftAgents provides the agent orchestration layer on top of SwiftAI SDK and Fou
 - 🔄 **Resilience** - Circuit breakers, retry policies with exponential backoff, and fallback chains
 - 🎨 **SwiftUI Components** - Ready-to-use chat views and agent status indicators
 - ⚡️ **Swift 6.2 Native** - Full actor isolation, Sendable types, and structured concurrency throughout
-- 🍎 **Apple-First** - Designed for Foundation Models, optimized for Apple silicon
+- 🍎 **LLM Agnostic** - Designed for Use with any LLM, local, cloud or Foundation Models
 
 ---
 
