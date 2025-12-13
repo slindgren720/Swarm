@@ -5,9 +5,9 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Swift Package Manager](https://img.shields.io/badge/SPM-compatible-brightgreen.svg)](https://swift.org/package-manager/)
 
-**LangChain for Apple Platforms** — A comprehensive Swift framework for building autonomous AI agents with Apple's Foundation Models.
+**LangChain for Apple Platforms** — A comprehensive Swift framework for building autonomous AI agents
 
-SwiftAgents provides the agent orchestration layer on top of SwiftAI SDK and Foundation Models, enabling autonomous reasoning, intelligent tool use, persistent memory systems, and sophisticated multi-agent coordination—all built natively for Apple platforms with Swift 6.2's strict concurrency safety.
+SwiftAgents provides the agent orchestration layer on top of SwiftAI SDK, enabling autonomous reasoning, intelligent tool use, persistent memory systems, and sophisticated multi-agent coordination—all built natively for Apple platforms with Swift 6.2's strict concurrency safety.
 
 ---
 
