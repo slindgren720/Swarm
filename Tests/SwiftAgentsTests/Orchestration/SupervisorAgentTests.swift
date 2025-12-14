@@ -619,8 +619,8 @@ struct SupervisorAgentCancellationTests {
         )
         
         await supervisor.cancel()
-        
+
         // Should complete without error
-        #expect(true)
+        #expect(Bool(true))
     }
 }
