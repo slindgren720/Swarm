@@ -122,6 +122,11 @@ public actor SwiftDataMemory: AgentMemory {
         }
     }
 
+    /// Whether the memory contains no messages for this conversation.
+    public var isEmpty: Bool {
+        get async { await count == 0 }
+    }
+
     // MARK: - Private Methods
 
     private func trimToMaxMessages() async {

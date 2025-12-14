@@ -162,6 +162,9 @@ public actor SummaryMemory: AgentMemory {
         recentMessages.count
     }
 
+    /// Whether the memory is empty (no recent messages and no summary).
+    public var isEmpty: Bool { recentMessages.isEmpty && summary.isEmpty }
+
     // MARK: - Summary Information
 
     /// Current summary text.

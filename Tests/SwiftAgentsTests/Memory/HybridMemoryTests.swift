@@ -256,7 +256,7 @@ struct HybridMemoryTests {
         await memory.clearSummary()
 
         #expect(await memory.hasSummary == false)
-        #expect(!await memory.isEmpty) // Short-term messages kept
+        #expect(await memory.isEmpty == false) // Short-term messages kept
     }
 
     // MARK: - Diagnostics Tests

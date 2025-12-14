@@ -73,6 +73,9 @@ public actor ConversationMemory: AgentMemory {
     public var count: Int {
         messages.count
     }
+
+    /// Whether the memory contains no messages.
+    public var isEmpty: Bool { messages.isEmpty }
 }
 
 // MARK: - Batch Operations
