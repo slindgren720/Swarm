@@ -1,0 +1,100 @@
+# SwiftFormat Configuration for SwiftAgents
+# https://github.com/nicklockwood/SwiftFormat
+
+# Swift version
+--swiftversion 6.0
+
+# File options
+--exclude .build,Package.swift
+
+# Indentation
+--indent 4
+--tabwidth 4
+--smarttabs enabled
+--indentcase false
+--ifdef indent
+
+# Braces and spacing
+--allman false
+--brace-on-same-line true
+--elseposition same-line
+--guardelse same-line
+
+# Wrapping
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--wrapconditions after-first
+--wrapreturntype preserve
+--wrapeffects preserve
+--maxwidth 120
+--closingparen balanced
+
+# Spacing
+--operatorfunc spaced
+--nospaceoperators
+--ranges spaced
+--typedelimiter spaced
+
+# Blank lines
+--emptybraces no-space
+--trimwhitespace always
+--linebreaks lf
+
+# Semicolons
+--semicolons never
+
+# Commas
+--commas inline
+
+# Redundant
+--redundanttype inferred
+--redundantself remove
+--redundantextensionacl on
+--redundantlet remove
+--redundantnil remove
+--redundantpattern remove
+--redundantinit remove
+--redundantclosure remove
+
+# Void
+--voidtype void
+
+# Marks
+--marktypes always
+--markextensions always
+--extensionmark "MARK: - %t + %c"
+--groupedextension "MARK: %c"
+
+# Imports
+--importgrouping alpha
+
+# Self
+--self remove
+--selfrequired
+
+# Modifiers
+--modifierorder acl,setterACL,override,mutating,lazy,final,required,convenience,typeMethods,owned
+
+# Enabled rules
+--enable isEmpty
+--enable sortSwitchCases
+--enable wrapEnumCases
+--enable wrapSwitchCases
+--enable blankLinesBetweenImports
+--enable docComments
+--enable markTypes
+--enable organizeDeclarations
+--enable sortImports
+
+# Disabled rules
+--disable trailingCommas
+--disable wrapMultilineStatementBraces
+--disable blankLineAfterImports
+--disable acronyms
+
+# Declaration organization (matches MARK style in codebase)
+--organizetypes actor,class,enum,struct,extension,protocol
+--organizationmode visibility
+--visibilityorder public,internal,fileprivate,private
+--typeorder beforeMarks,nestedType,staticProperty,staticPropertyWithBody,classPropertyWithBody,instanceProperty,instancePropertyWithBody,staticMethod,classMethod,instanceMethod,subscript
