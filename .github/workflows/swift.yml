@@ -1,25 +1,80 @@
-# This workflow will build a Swift project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-swift
+# SwiftAgents CI Workflow
+# Builds and tests the SwiftAgents framework on macOS
 
-name: Swift
+name: Swift CI
 
 on:
   push:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-test:
+    name: Build & Test
+    runs-on: macos-15
 
-    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-steps:
-  - uses: actions/checkout@v4
-  - uses: maxim-lobanov/setup-swift@v1
-    with:
-      swift-version: '6.2'
-  - name: Build
-    run: swift build -v
-  - name: Run tests
-    run: swift test -v
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.0'
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-swift-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swift-
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build (Debug)
+        run: swift build -c debug
+
+      - name: Build (Release)
+        run: swift build -c release
+
+      - name: Run tests
+        run: swift test --parallel
+
+  code-quality:
+    name: Code Quality
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.0'
+
+      - name: Check Swift package
+        run: swift package describe
+
+      - name: Dump package
+        run: swift package dump-package
+
+  # Platform-specific builds (when Xcode 26 is available on GitHub Actions)
+  # ios-build:
+  #   name: iOS Build
+  #   runs-on: macos-15
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Build for iOS
+  #       run: xcodebuild build -scheme SwiftAgents -destination 'platform=iOS Simulator,name=iPhone 16'
