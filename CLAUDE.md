@@ -51,9 +51,10 @@ swift package plugin --allow-writing-to-package-directory swiftformat  # Format 
 ### Before Committing
 1. Run `swift build` - ensure no compilation errors
 2. Run `swift test` - all tests must pass
-3. Run SwiftFormat - code must be formatted
-4. Verify `Sendable` conformance on public types
-5. Ensure documentation comments on public APIs
+3. Run SwiftFormat - code must be formatted (`swift package plugin --allow-writing-to-package-directory swiftformat`)
+4. Run SwiftLint - code must pass linting checks (`swiftlint lint` - install via Homebrew if needed)
+5. Verify `Sendable` conformance on public types
+6. Ensure documentation comments on public APIs
 
 ### Branch Naming
 - `feature/agent-memory-system`
@@ -84,6 +85,22 @@ swift package plugin --allow-writing-to-package-directory swiftformat  # Format 
 - `ConversationMemory`: Short-term, token-limited context
 - `VectorMemory`: Long-term semantic retrieval (requires embedding provider)
 - `SummaryMemory`: Compressed conversation history
+
+### Logging
+- Use `Logger` from `os` framework (Apple's unified logging system)
+- Never use `print()` statements in production code
+- Use category-specific loggers:
+  - `Logger.agents`: Agent lifecycle and execution
+  - `Logger.memory`: Memory system operations
+  - `Logger.tracing`: Observability and tracing events
+  - `Logger.metrics`: Performance and usage metrics
+  - `Logger.orchestration`: Multi-agent coordination
+- Choose appropriate log levels: `.trace`, `.debug`, `.info`, `.notice`, `.warning`, `.error`, `.fault`
+- Apply privacy annotations to protect sensitive data:
+  - `privacy: .private` for user data, error details, conversation content
+  - `privacy: .public` for non-sensitive metadata, counts, IDs
+  - Default behavior (no annotation) treats data as private
+- Example: `Logger.memory.error("Failed to save: \(error, privacy: .private)")`
 
 ### Testing Strategy
 - Foundation Models unavailable in simulators—use mock protocols

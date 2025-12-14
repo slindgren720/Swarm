@@ -126,16 +126,7 @@ public actor SwiftDataMemory: AgentMemory {
 
     /// Whether the memory contains no messages for this conversation.
     public var isEmpty: Bool {
-        get async {
-            let descriptor = PersistedMessage.fetchDescriptor(forConversation: conversationId)
-            do {
-                let count = try modelContext.fetchCount(descriptor)
-                return count == 0
-            } catch {
-                Logger.memory.error("SwiftDataMemory: Failed to check isEmpty: \(error, privacy: .private)")
-                return true
-            }
-        }
+        get async { await count == 0 }
     }
 
     // MARK: - Private Methods
