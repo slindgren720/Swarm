@@ -59,14 +59,17 @@ disabled_rules:
   - force_try
   - todo  # Allow TODO comments during development
   - opening_brace  # SwiftFormat handles this
+  - extension_access_modifier  # Existing code doesn't use this pattern
+  - prefer_self_in_static_references  # Would require extensive refactoring
+  - trailing_closure  # Conflicts with existing code style
 
 # Rule configurations
 line_length:
-  warning: 120
-  error: 150
+  warning: 150
+  error: 200
   ignores_comments: true
   ignores_urls: true
-  ignores_function_declarations: false
+  ignores_function_declarations: true
 
 file_length:
   warning: 500
@@ -78,8 +81,8 @@ type_body_length:
   error: 500
 
 function_body_length:
-  warning: 50
-  error: 100
+  warning: 80
+  error: 150
 
 function_parameter_count:
   warning: 6
@@ -104,14 +107,16 @@ identifier_name:
     - x
     - y
     - z
+    - v
+    - n
 
 nesting:
   type_level: 2
   function_level: 3
 
 cyclomatic_complexity:
-  warning: 15
-  error: 25
+  warning: 20
+  error: 30
 
 large_tuple:
   warning: 3

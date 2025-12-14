@@ -143,7 +143,7 @@ public enum MergeStrategies {
                 throw OrchestrationError.mergeStrategyFailed(reason: "No results to merge")
             }
 
-            var result = firstResult.value
+            let result = firstResult.value
             var metadata = result.metadata
             metadata["selected_agent"] = .string(firstResult.key)
             metadata["total_agents"] = .int(results.count)
@@ -182,7 +182,7 @@ public enum MergeStrategies {
 
             let longest = results.max { $0.value.output.count < $1.value.output.count }!
 
-            var result = longest.value
+            let result = longest.value
             var metadata = result.metadata
             metadata["selected_agent"] = .string(longest.key)
             metadata["output_length"] = .int(longest.value.output.count)
