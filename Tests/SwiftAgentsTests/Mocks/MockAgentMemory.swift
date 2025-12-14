@@ -1,5 +1,5 @@
 // MockAgentMemory.swift
-// SwiftAgents Framework Tests
+// SwiftAgents Framework
 //
 // Mock memory for testing agents and orchestration.
 
@@ -108,6 +108,12 @@ public actor MockAgentMemory: AgentMemory {
     public var count: Int {
         get async {
             messages.count
+        }
+    }
+
+    public var isEmpty: Bool {
+        get async {
+            messages.isEmpty
         }
     }
 

@@ -84,6 +84,9 @@ public actor SlidingWindowMemory: AgentMemory {
         messages.count
     }
 
+    /// Whether the memory contains no messages.
+    public var isEmpty: Bool { messages.isEmpty }
+
     // MARK: - Token Information
 
     /// Current estimated total token count.

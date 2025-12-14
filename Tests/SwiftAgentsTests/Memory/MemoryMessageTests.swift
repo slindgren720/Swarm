@@ -1,5 +1,5 @@
 // MemoryMessageTests.swift
-// SwiftAgents Framework Tests
+// SwiftAgents Framework
 
 import Testing
 import Foundation
@@ -136,8 +136,9 @@ struct MemoryMessageTests {
     @Test("Messages with same ID are equal")
     func testEquatable() {
         let id = UUID()
-        let message1 = MemoryMessage(id: id, role: .user, content: "Hello")
-        let message2 = MemoryMessage(id: id, role: .user, content: "Hello")
+        let timestamp = Date()
+        let message1 = MemoryMessage(id: id, role: .user, content: "Hello", timestamp: timestamp)
+        let message2 = MemoryMessage(id: id, role: .user, content: "Hello", timestamp: timestamp)
 
         #expect(message1 == message2)
     }

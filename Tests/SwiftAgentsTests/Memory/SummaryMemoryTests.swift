@@ -1,5 +1,5 @@
 // SummaryMemoryTests.swift
-// SwiftAgents Framework Tests
+// SwiftAgents Framework
 
 import Testing
 import Foundation
@@ -250,7 +250,7 @@ struct SummaryMemoryTests {
 
         await memory.clear()
 
-        #expect(await memory.count == 0)
+        #expect(await memory.isEmpty)
         #expect(await memory.hasSummary == false)
         #expect(await memory.totalMessages == 0)
     }
