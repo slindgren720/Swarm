@@ -63,18 +63,21 @@ jobs:
 
       - name: Install Swiftly and Swift 6.2
         run: |
+          # Set explicit paths to avoid variable expansion issues
+          export SWIFTLY_HOME_DIR="$HOME/.local/share/swiftly"
+          export SWIFTLY_BIN_DIR="$HOME/.local/bin"
           curl -O "https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz"
           tar zxf "swiftly-$(uname -m).tar.gz"
           ./swiftly init --quiet-shell-followup
-          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+          . "$SWIFTLY_HOME_DIR/env.sh"
           swiftly install 6.2
-          echo "$HOME/.local/share/swiftly/bin" >> $GITHUB_PATH
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$SWIFTLY_HOME_DIR/bin" >> $GITHUB_PATH
+          echo "$SWIFTLY_BIN_DIR" >> $GITHUB_PATH
+          # Persist for subsequent steps
+          echo "SWIFTLY_HOME_DIR=$SWIFTLY_HOME_DIR" >> $GITHUB_ENV
 
       - name: Verify Swift version
-        run: |
-          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
-          swift --version
+        run: swift --version
 
       - name: Cache Swift packages
         uses: actions/cache@v4
@@ -85,19 +88,13 @@ jobs:
             linux-swift-
 
       - name: Resolve dependencies
-        run: |
-          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
-          swift package resolve
+        run: swift package resolve
 
       - name: Build
-        run: |
-          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
-          swift build
+        run: swift build
 
       - name: Run tests
-        run: |
-          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
-          swift test --parallel
+        run: swift test --parallel
 
   # Code Quality (macOS only - SwiftLint/SwiftFormat)
   code-quality:
