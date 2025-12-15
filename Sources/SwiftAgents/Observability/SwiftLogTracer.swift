@@ -34,15 +34,6 @@ import Logging
 public actor SwiftLogTracer: AgentTracer {
     private var logger: Logger
     private let minimumLevel: EventLevel
-    private var activeSpans: [UUID: SpanData] = [:]
-
-    /// Data associated with an active span.
-    private struct SpanData: Sendable {
-        let name: String
-        let startTime: Date
-        let traceId: UUID
-        let parentSpanId: UUID?
-    }
 
     /// Creates a new SwiftLogTracer.
     ///

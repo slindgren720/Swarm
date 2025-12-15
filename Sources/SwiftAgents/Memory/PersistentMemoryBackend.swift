@@ -82,6 +82,16 @@ public protocol PersistentMemoryBackend: Actor, Sendable {
     ///   - messages: The messages to store.
     ///   - conversationId: The conversation identifier.
     func storeAll(_ messages: [MemoryMessage], conversationId: String) async throws
+
+    /// Deletes oldest messages, keeping only the most recent N.
+    ///
+    /// Default implementation fetches all messages, then deletes and re-inserts.
+    /// Override for optimized database operations (e.g., DELETE with ORDER BY and LIMIT).
+    ///
+    /// - Parameters:
+    ///   - conversationId: The conversation identifier.
+    ///   - keepRecent: Number of recent messages to keep.
+    func deleteOldestMessages(conversationId: String, keepRecent: Int) async throws
 }
 
 // MARK: - Default Implementations
@@ -91,6 +101,16 @@ extension PersistentMemoryBackend {
         for message in messages {
             try await store(message, conversationId: conversationId)
         }
+    }
+
+    public func deleteOldestMessages(conversationId: String, keepRecent: Int) async throws {
+        // Default implementation: fetch all, keep recent, delete and re-insert
+        let allMessages = try await fetchMessages(conversationId: conversationId)
+        guard allMessages.count > keepRecent else { return }
+
+        let messagesToKeep = Array(allMessages.suffix(keepRecent))
+        try await deleteMessages(conversationId: conversationId)
+        try await storeAll(messagesToKeep, conversationId: conversationId)
     }
 }
 

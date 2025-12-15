@@ -80,9 +80,11 @@ public enum Log {
 
     /// Bootstrap the logging system with default console output.
     ///
-    /// Call once at application startup before using any loggers.
+    /// **Important**: This method must be called **exactly once** at application startup,
+    /// before using any loggers. Calling it multiple times will trigger a fatal error.
     ///
     /// ```swift
+    /// // In your app's main entry point
     /// Log.bootstrap()
     /// ```
     public static func bootstrap() {
@@ -91,9 +93,11 @@ public enum Log {
 
     /// Bootstrap the logging system with a custom log handler factory.
     ///
-    /// Call once at application startup before using any loggers.
+    /// **Important**: This method must be called **exactly once** at application startup,
+    /// before using any loggers. Calling it multiple times will trigger a fatal error.
     ///
     /// ```swift
+    /// // In your app's main entry point
     /// Log.bootstrap { label in
     ///     var handler = StreamLogHandler.standardError(label: label)
     ///     handler.logLevel = .debug

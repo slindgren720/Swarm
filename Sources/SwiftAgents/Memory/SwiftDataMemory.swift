@@ -76,7 +76,7 @@ public actor SwiftDataMemory: AgentMemory {
             }
         } catch {
             // Log error but don't throw - memory operations should be resilient
-            Log.memory.error("SwiftDataMemory: Failed to save message: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to save message: \(error.localizedDescription)")
         }
     }
 
@@ -92,7 +92,7 @@ public actor SwiftDataMemory: AgentMemory {
             let persisted = try modelContext.fetch(descriptor)
             return persisted.compactMap { $0.toMemoryMessage() }
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to fetch messages: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to fetch messages: \(error.localizedDescription)")
             return []
         }
     }
@@ -107,7 +107,7 @@ public actor SwiftDataMemory: AgentMemory {
             }
             try modelContext.save()
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to clear messages: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to clear messages: \(error.localizedDescription)")
         }
     }
 
@@ -118,7 +118,7 @@ public actor SwiftDataMemory: AgentMemory {
             do {
                 return try modelContext.fetchCount(descriptor)
             } catch {
-                Log.memory.error("SwiftDataMemory: Failed to fetch count: \(error)")
+                Log.memory.error("SwiftDataMemory: Failed to fetch count: \(error.localizedDescription)")
                 return 0
             }
         }
@@ -145,7 +145,7 @@ public actor SwiftDataMemory: AgentMemory {
                 try modelContext.save()
             }
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to trim messages: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to trim messages: \(error.localizedDescription)")
         }
     }
 }
@@ -171,7 +171,7 @@ extension SwiftDataMemory {
                 await trimToMaxMessages()
             }
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to save messages: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to save messages: \(error.localizedDescription)")
         }
     }
 
@@ -187,7 +187,7 @@ extension SwiftDataMemory {
             // Reverse because fetch was in descending order
             return persisted.reversed().compactMap { $0.toMemoryMessage() }
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to fetch recent messages: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to fetch recent messages: \(error.localizedDescription)")
             return []
         }
     }
@@ -205,7 +205,7 @@ extension SwiftDataMemory {
             let messages = try modelContext.fetch(descriptor)
             return Array(Set(messages.map(\.conversationId))).sorted()
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to fetch conversation IDs: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to fetch conversation IDs: \(error.localizedDescription)")
             return []
         }
     }
@@ -223,7 +223,7 @@ extension SwiftDataMemory {
             }
             try modelContext.save()
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to delete conversation: \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to delete conversation: \(error.localizedDescription)")
         }
     }
 
@@ -237,7 +237,7 @@ extension SwiftDataMemory {
         do {
             return try modelContext.fetchCount(descriptor)
         } catch {
-            Log.memory.error("SwiftDataMemory: Failed to fetch message count for conversation \(id): \(error)")
+            Log.memory.error("SwiftDataMemory: Failed to fetch message count for conversation \(id): \(error.localizedDescription)")
             return 0
         }
     }

@@ -70,7 +70,7 @@ public actor PersistentMemory: AgentMemory {
                 await trimToMaxMessages()
             }
         } catch {
-            Log.memory.error("PersistentMemory: Failed to store message: \(error)")
+            Log.memory.error("PersistentMemory: Failed to store message: \(error.localizedDescription)")
         }
     }
 
@@ -87,7 +87,7 @@ public actor PersistentMemory: AgentMemory {
         do {
             return try await backend.fetchMessages(conversationId: conversationId)
         } catch {
-            Log.memory.error("PersistentMemory: Failed to fetch messages: \(error)")
+            Log.memory.error("PersistentMemory: Failed to fetch messages: \(error.localizedDescription)")
             return []
         }
     }
@@ -96,7 +96,7 @@ public actor PersistentMemory: AgentMemory {
         do {
             try await backend.deleteMessages(conversationId: conversationId)
         } catch {
-            Log.memory.error("PersistentMemory: Failed to clear messages: \(error)")
+            Log.memory.error("PersistentMemory: Failed to clear messages: \(error.localizedDescription)")
         }
     }
 
@@ -127,7 +127,7 @@ public actor PersistentMemory: AgentMemory {
                 limit: limit
             )
         } catch {
-            Log.memory.error("PersistentMemory: Failed to fetch recent messages: \(error)")
+            Log.memory.error("PersistentMemory: Failed to fetch recent messages: \(error.localizedDescription)")
             return []
         }
     }
@@ -143,7 +143,7 @@ public actor PersistentMemory: AgentMemory {
                 await trimToMaxMessages()
             }
         } catch {
-            Log.memory.error("PersistentMemory: Failed to store messages: \(error)")
+            Log.memory.error("PersistentMemory: Failed to store messages: \(error.localizedDescription)")
         }
     }
 
@@ -156,17 +156,15 @@ public actor PersistentMemory: AgentMemory {
             let currentCount = try await backend.messageCount(conversationId: conversationId)
             guard currentCount > maxMessages else { return }
 
-            // Fetch all messages, keep only the most recent
-            let allMessages = try await backend.fetchMessages(conversationId: conversationId)
-            let messagesToKeep = Array(allMessages.suffix(maxMessages))
-
-            // Clear and re-add (simple implementation)
-            try await backend.deleteMessages(conversationId: conversationId)
-            try await backend.storeAll(messagesToKeep, conversationId: conversationId)
+            // Use backend's optimized deletion method
+            try await backend.deleteOldestMessages(
+                conversationId: conversationId,
+                keepRecent: maxMessages
+            )
 
             Log.memory.debug("Trimmed memory from \(currentCount) to \(maxMessages) messages")
         } catch {
-            Log.memory.error("PersistentMemory: Failed to trim messages: \(error)")
+            Log.memory.error("PersistentMemory: Failed to trim messages: \(error.localizedDescription)")
         }
     }
 }

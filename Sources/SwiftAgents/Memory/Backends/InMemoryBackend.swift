@@ -71,6 +71,13 @@ public actor InMemoryBackend: PersistentMemoryBackend {
         storage[conversationId, default: []].append(contentsOf: stored)
     }
 
+    public func deleteOldestMessages(conversationId: String, keepRecent: Int) async throws {
+        guard var messages = storage[conversationId], messages.count > keepRecent else { return }
+        // Keep only the most recent N messages
+        messages = Array(messages.suffix(keepRecent))
+        storage[conversationId] = messages
+    }
+
     // MARK: - Additional Convenience Methods
 
     /// Clears all data from all conversations.

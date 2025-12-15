@@ -105,5 +105,26 @@ public actor SwiftDataBackend: PersistentMemoryBackend {
         try modelContext.save()
         Log.memory.debug("Stored \(messages.count) messages for conversation: \(conversationId)")
     }
+
+    public func deleteOldestMessages(conversationId: String, keepRecent: Int) async throws {
+        let currentCount = try await messageCount(conversationId: conversationId)
+        guard currentCount > keepRecent else { return }
+
+        let deleteCount = currentCount - keepRecent
+
+        // Fetch oldest messages to delete
+        var descriptor = FetchDescriptor<PersistedMessage>(
+            predicate: #Predicate { $0.conversationId == conversationId },
+            sortBy: [SortDescriptor(\.timestamp, order: .forward)]
+        )
+        descriptor.fetchLimit = deleteCount
+
+        let messagesToDelete = try modelContext.fetch(descriptor)
+        for message in messagesToDelete {
+            modelContext.delete(message)
+        }
+        try modelContext.save()
+        Log.memory.debug("Deleted \(deleteCount) oldest messages for conversation: \(conversationId)")
+    }
 }
 #endif

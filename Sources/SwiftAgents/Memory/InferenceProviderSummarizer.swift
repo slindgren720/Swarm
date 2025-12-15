@@ -56,10 +56,19 @@ public actor InferenceProviderSummarizer: Summarizer {
     // MARK: - Summarizer Protocol
 
     public func summarize(_ text: String, maxTokens: Int) async throws -> String {
+        // Truncate input to prevent excessive token usage
+        let maxInputLength = 50000 // Reasonable limit for most LLMs
+        let truncatedText = text.count > maxInputLength
+            ? String(text.prefix(maxInputLength)) + "\n[...truncated]"
+            : text
+
+        // Use XML-style boundaries to prevent prompt injection
         let prompt = """
         \(systemPrompt)
 
-        \(text)
+        <text_to_summarize>
+        \(truncatedText)
+        </text_to_summarize>
 
         Summary:
         """
@@ -69,7 +78,13 @@ public actor InferenceProviderSummarizer: Summarizer {
             .maxTokens(maxTokens)
 
         let response = try await provider.generate(prompt: prompt, options: options)
-        return response.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmed.isEmpty else {
+            throw PersistentMemoryError.fetchFailed("Summarizer returned empty response")
+        }
+
+        return trimmed
     }
 
     public var isAvailable: Bool {
