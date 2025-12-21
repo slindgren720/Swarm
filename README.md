@@ -1299,7 +1299,7 @@ SwiftAgents is released under the MIT License. See [LICENSE](LICENSE) for detail
 - **Documentation**: [Full documentation](https://chriskarani.github.io/SwiftAgents/)
 - **Issues**: [GitHub Issues](https://github.com/chriskarani/SwiftAgents/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/chriskarani/SwiftAgents/discussions)
-- **Twitter**: [@chriskarani](https://twitter.com/chriskarani)
+- **Twitter**: [@ckarani7]([https://twitter.com/chriskarani](https://x.com/ckarani7))
 
 ---
 
