@@ -26,7 +26,7 @@ import Foundation
 ///
 /// By default uses character-based estimation (chars / 4).
 /// For production use with specific models, provide a custom `TokenEstimator`.
-public actor SlidingWindowMemory: AgentMemory {
+public actor SlidingWindowMemory: Memory {
     // MARK: Public
 
     /// Maximum tokens to retain.
@@ -85,12 +85,12 @@ public actor SlidingWindowMemory: AgentMemory {
         }
     }
 
-    public func getContext(for _: String, tokenLimit: Int) async -> String {
+    public func context(for _: String, tokenLimit: Int) async -> String {
         let effectiveLimit = min(tokenLimit, maxTokens)
         return formatMessagesForContext(messages, tokenLimit: effectiveLimit, tokenEstimator: tokenEstimator)
     }
 
-    public func getAllMessages() async -> [MemoryMessage] {
+    public func allMessages() async -> [MemoryMessage] {
         messages
     }
 

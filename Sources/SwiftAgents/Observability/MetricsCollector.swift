@@ -196,7 +196,7 @@ public struct MetricsSnapshot: Sendable, Codable, Equatable {
 /// // Reset metrics
 /// await collector.reset()
 /// ```
-public actor MetricsCollector: AgentTracer {
+public actor MetricsCollector: Tracer {
     // MARK: Public
 
     // MARK: - Initialization

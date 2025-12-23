@@ -40,16 +40,16 @@ final class AgentMacroTests: XCTestCase {
                         return "Hello!"
                     }
 
-                    public let tools: [any Tool] = []
+                    public let tools: [any Tool]
 
-                    public let instructions: String = "You are a helpful assistant"
+                    public let instructions: String
 
-                    public let configuration: AgentConfiguration = .default
+                    public let configuration: AgentConfiguration
 
-                    public nonisolated var memory: (any AgentMemory)? {
+                    public nonisolated var memory: (any Memory)? {
                         _memory
                     }
-                    private nonisolated let _memory: (any AgentMemory)?
+                    private nonisolated let _memory: (any Memory)?
 
                     public nonisolated var inferenceProvider: (any InferenceProvider)? {
                         _inferenceProvider
@@ -60,11 +60,14 @@ final class AgentMacroTests: XCTestCase {
 
                     public init(
                         tools: [any Tool] = [],
-                        instructions: String? = nil,
+                        instructions: String = "You are a helpful assistant",
                         configuration: AgentConfiguration = .default,
-                        memory: (any AgentMemory)? = nil,
+                        memory: (any Memory)? = nil,
                         inferenceProvider: (any InferenceProvider)? = nil
                     ) {
+                        self.tools = tools
+                        self.instructions = instructions
+                        self.configuration = configuration
                         self._memory = memory
                         self._inferenceProvider = inferenceProvider
                     }
@@ -132,6 +135,72 @@ final class AgentMacroTests: XCTestCase {
 
                     public func cancel() async {
                         isCancelled = true
+                    }
+
+                    /// A fluent builder for creating AssistantAgent instances.
+                    public final class Builder: @unchecked Sendable {
+                        private var _tools: [any Tool] = []
+                        private var _instructions: String = ""
+                        private var _configuration: AgentConfiguration = .default
+                        private var _memory: (any Memory)?
+                        private var _inferenceProvider: (any InferenceProvider)?
+
+                        /// Creates a new builder with default values.
+                        public init() {
+                        }
+
+                        /// Sets the tools for the agent.
+                        @discardableResult
+                        public func tools(_ tools: [any Tool]) -> Builder {
+                            self._tools = tools
+                            return self
+                        }
+
+                        /// Adds a tool to the agent's tool set.
+                        @discardableResult
+                        public func addTool(_ tool: any Tool) -> Builder {
+                            self._tools.append(tool)
+                            return self
+                        }
+
+                        /// Sets the instructions for the agent.
+                        @discardableResult
+                        public func instructions(_ instructions: String) -> Builder {
+                            self._instructions = instructions
+                            return self
+                        }
+
+                        /// Sets the configuration for the agent.
+                        @discardableResult
+                        public func configuration(_ configuration: AgentConfiguration) -> Builder {
+                            self._configuration = configuration
+                            return self
+                        }
+
+                        /// Sets the memory system for the agent.
+                        @discardableResult
+                        public func memory(_ memory: any Memory) -> Builder {
+                            self._memory = memory
+                            return self
+                        }
+
+                        /// Sets the inference provider for the agent.
+                        @discardableResult
+                        public func inferenceProvider(_ provider: any InferenceProvider) -> Builder {
+                            self._inferenceProvider = provider
+                            return self
+                        }
+
+                        /// Builds the agent with the configured values.
+                        public func build() -> AssistantAgent {
+                            AssistantAgent(
+                                tools: _tools,
+                                instructions: _instructions,
+                                configuration: _configuration,
+                                memory: _memory,
+                                inferenceProvider: _inferenceProvider
+                            )
+                        }
                     }
                 }
 
@@ -167,14 +236,14 @@ final class AgentMacroTests: XCTestCase {
                         return "Calculated!"
                     }
 
-                    public let instructions: String = "Math assistant"
+                    public let instructions: String
 
-                    public let configuration: AgentConfiguration = .default
+                    public let configuration: AgentConfiguration
 
-                    public nonisolated var memory: (any AgentMemory)? {
+                    public nonisolated var memory: (any Memory)? {
                         _memory
                     }
-                    private nonisolated let _memory: (any AgentMemory)?
+                    private nonisolated let _memory: (any Memory)?
 
                     public nonisolated var inferenceProvider: (any InferenceProvider)? {
                         _inferenceProvider
@@ -185,11 +254,14 @@ final class AgentMacroTests: XCTestCase {
 
                     public init(
                         tools: [any Tool] = [],
-                        instructions: String? = nil,
+                        instructions: String = "Math assistant",
                         configuration: AgentConfiguration = .default,
-                        memory: (any AgentMemory)? = nil,
+                        memory: (any Memory)? = nil,
                         inferenceProvider: (any InferenceProvider)? = nil
                     ) {
+                        self.tools = tools
+                        self.instructions = instructions
+                        self.configuration = configuration
                         self._memory = memory
                         self._inferenceProvider = inferenceProvider
                     }
@@ -257,6 +329,72 @@ final class AgentMacroTests: XCTestCase {
 
                     public func cancel() async {
                         isCancelled = true
+                    }
+
+                    /// A fluent builder for creating MathAgent instances.
+                    public final class Builder: @unchecked Sendable {
+                        private var _tools: [any Tool] = []
+                        private var _instructions: String = ""
+                        private var _configuration: AgentConfiguration = .default
+                        private var _memory: (any Memory)?
+                        private var _inferenceProvider: (any InferenceProvider)?
+
+                        /// Creates a new builder with default values.
+                        public init() {
+                        }
+
+                        /// Sets the tools for the agent.
+                        @discardableResult
+                        public func tools(_ tools: [any Tool]) -> Builder {
+                            self._tools = tools
+                            return self
+                        }
+
+                        /// Adds a tool to the agent's tool set.
+                        @discardableResult
+                        public func addTool(_ tool: any Tool) -> Builder {
+                            self._tools.append(tool)
+                            return self
+                        }
+
+                        /// Sets the instructions for the agent.
+                        @discardableResult
+                        public func instructions(_ instructions: String) -> Builder {
+                            self._instructions = instructions
+                            return self
+                        }
+
+                        /// Sets the configuration for the agent.
+                        @discardableResult
+                        public func configuration(_ configuration: AgentConfiguration) -> Builder {
+                            self._configuration = configuration
+                            return self
+                        }
+
+                        /// Sets the memory system for the agent.
+                        @discardableResult
+                        public func memory(_ memory: any Memory) -> Builder {
+                            self._memory = memory
+                            return self
+                        }
+
+                        /// Sets the inference provider for the agent.
+                        @discardableResult
+                        public func inferenceProvider(_ provider: any InferenceProvider) -> Builder {
+                            self._inferenceProvider = provider
+                            return self
+                        }
+
+                        /// Builds the agent with the configured values.
+                        public func build() -> MathAgent {
+                            MathAgent(
+                                tools: _tools,
+                                instructions: _instructions,
+                                configuration: _configuration,
+                                memory: _memory,
+                                inferenceProvider: _inferenceProvider
+                            )
+                        }
                     }
                 }
 
@@ -300,6 +438,7 @@ final class AgentMacroTests: XCTestCase {
         #endif
     }
 
+    // swiftlint:disable:next function_body_length
     func testAgentWithoutProcessMethod() throws {
         #if canImport(SwiftAgentsMacros)
             // Agent without process method should still compile but run() throws
@@ -312,16 +451,16 @@ final class AgentMacroTests: XCTestCase {
                 expandedSource: """
                 actor IncompleteAgent {
 
-                    public let tools: [any Tool] = []
+                    public let tools: [any Tool]
 
-                    public let instructions: String = "No process method"
+                    public let instructions: String
 
-                    public let configuration: AgentConfiguration = .default
+                    public let configuration: AgentConfiguration
 
-                    public nonisolated var memory: (any AgentMemory)? {
+                    public nonisolated var memory: (any Memory)? {
                         _memory
                     }
-                    private nonisolated let _memory: (any AgentMemory)?
+                    private nonisolated let _memory: (any Memory)?
 
                     public nonisolated var inferenceProvider: (any InferenceProvider)? {
                         _inferenceProvider
@@ -332,11 +471,14 @@ final class AgentMacroTests: XCTestCase {
 
                     public init(
                         tools: [any Tool] = [],
-                        instructions: String? = nil,
+                        instructions: String = "No process method",
                         configuration: AgentConfiguration = .default,
-                        memory: (any AgentMemory)? = nil,
+                        memory: (any Memory)? = nil,
                         inferenceProvider: (any InferenceProvider)? = nil
                     ) {
+                        self.tools = tools
+                        self.instructions = instructions
+                        self.configuration = configuration
                         self._memory = memory
                         self._inferenceProvider = inferenceProvider
                     }
@@ -371,6 +513,72 @@ final class AgentMacroTests: XCTestCase {
 
                     public func cancel() async {
                         isCancelled = true
+                    }
+
+                    /// A fluent builder for creating IncompleteAgent instances.
+                    public final class Builder: @unchecked Sendable {
+                        private var _tools: [any Tool] = []
+                        private var _instructions: String = ""
+                        private var _configuration: AgentConfiguration = .default
+                        private var _memory: (any Memory)?
+                        private var _inferenceProvider: (any InferenceProvider)?
+
+                        /// Creates a new builder with default values.
+                        public init() {
+                        }
+
+                        /// Sets the tools for the agent.
+                        @discardableResult
+                        public func tools(_ tools: [any Tool]) -> Builder {
+                            self._tools = tools
+                            return self
+                        }
+
+                        /// Adds a tool to the agent's tool set.
+                        @discardableResult
+                        public func addTool(_ tool: any Tool) -> Builder {
+                            self._tools.append(tool)
+                            return self
+                        }
+
+                        /// Sets the instructions for the agent.
+                        @discardableResult
+                        public func instructions(_ instructions: String) -> Builder {
+                            self._instructions = instructions
+                            return self
+                        }
+
+                        /// Sets the configuration for the agent.
+                        @discardableResult
+                        public func configuration(_ configuration: AgentConfiguration) -> Builder {
+                            self._configuration = configuration
+                            return self
+                        }
+
+                        /// Sets the memory system for the agent.
+                        @discardableResult
+                        public func memory(_ memory: any Memory) -> Builder {
+                            self._memory = memory
+                            return self
+                        }
+
+                        /// Sets the inference provider for the agent.
+                        @discardableResult
+                        public func inferenceProvider(_ provider: any InferenceProvider) -> Builder {
+                            self._inferenceProvider = provider
+                            return self
+                        }
+
+                        /// Builds the agent with the configured values.
+                        public func build() -> IncompleteAgent {
+                            IncompleteAgent(
+                                tools: _tools,
+                                instructions: _instructions,
+                                configuration: _configuration,
+                                memory: _memory,
+                                inferenceProvider: _inferenceProvider
+                            )
+                        }
                     }
                 }
 

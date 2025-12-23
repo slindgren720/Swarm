@@ -75,23 +75,24 @@ public struct Tools: AgentComponent {
 /// ```swift
 /// let agent = ReActAgent {
 ///     Instructions("Memory-enabled agent.")
-///     Memory(ConversationMemory(maxMessages: 50))
+///     AgentMemoryComponent(ConversationMemory(maxMessages: 50))
 /// }
 /// ```
 public struct AgentMemoryComponent: AgentComponent {
     /// The memory system.
-    public let memory: any AgentMemory
+    public let memory: any Memory
 
     /// Creates a memory component.
     ///
     /// - Parameter memory: The memory system to use.
-    public init(_ memory: any AgentMemory) {
+    public init(_ memory: any Memory) {
         self.memory = memory
     }
 }
 
-/// Type alias for cleaner DSL syntax.
-public typealias Memory = AgentMemoryComponent
+/// Type alias for cleaner DSL syntax in AgentBuilder.
+/// Note: This is different from SwiftAgents.MemoryComponent used in MemoryBuilder.
+public typealias AgentBuilderMemoryComponent = AgentMemoryComponent
 
 // MARK: - Configuration
 
@@ -156,7 +157,7 @@ public struct InferenceProviderComponent: AgentComponent {
 ///         DateTimeTool()
 ///     }
 ///
-///     Memory(ConversationMemory(maxMessages: 100))
+///     AgentMemoryComponent(ConversationMemory(maxMessages: 100))
 ///
 ///     Configuration(.default
 ///         .maxIterations(10)
@@ -172,7 +173,7 @@ public struct AgentBuilder {
     public struct Components {
         var instructions: String?
         var tools: [any Tool] = []
-        var memory: (any AgentMemory)?
+        var memory: (any Memory)?
         var configuration: AgentConfiguration?
         var inferenceProvider: (any InferenceProvider)?
     }
@@ -262,7 +263,7 @@ public extension ReActAgent {
     ///         DateTimeTool()
     ///     }
     ///
-    ///     Memory(ConversationMemory(maxMessages: 50))
+    ///     AgentMemoryComponent(ConversationMemory(maxMessages: 50))
     ///
     ///     Configuration(.default.maxIterations(10))
     /// }

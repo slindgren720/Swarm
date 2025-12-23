@@ -146,7 +146,7 @@ public actor SequentialChain: Agent {
     }
 
     /// Memory system (chains don't maintain their own memory).
-    nonisolated public var memory: (any AgentMemory)? { nil }
+    nonisolated public var memory: (any Memory)? { nil }
 
     /// Inference provider (chains don't use inference directly).
     nonisolated public var inferenceProvider: (any InferenceProvider)? { nil }
@@ -212,7 +212,7 @@ public actor SequentialChain: Agent {
     ///           or `AgentError.cancelled` if execution was cancelled.
     public func run(_ input: String) async throws -> AgentResult {
         guard !chainedAgents.isEmpty else {
-            throw OrchestrationError.noAgentsConfigured
+            throw AgentError.invalidInput(reason: "No agents configured in sequential chain")
         }
 
         // Create shared context
@@ -284,7 +284,7 @@ public actor SequentialChain: Agent {
 
             do {
                 guard !chainedAgents.isEmpty else {
-                    throw OrchestrationError.noAgentsConfigured
+                    throw AgentError.invalidInput(reason: "No agents configured in sequential chain")
                 }
 
                 continuation.yield(.started(input: input))

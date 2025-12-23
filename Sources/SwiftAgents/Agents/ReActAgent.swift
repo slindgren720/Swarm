@@ -36,7 +36,7 @@ public actor ReActAgent: Agent {
     nonisolated public let tools: [any Tool]
     nonisolated public let instructions: String
     nonisolated public let configuration: AgentConfiguration
-    nonisolated public let memory: (any AgentMemory)?
+    nonisolated public let memory: (any Memory)?
     nonisolated public let inferenceProvider: (any InferenceProvider)?
 
     // MARK: - Initialization
@@ -52,7 +52,7 @@ public actor ReActAgent: Agent {
         tools: [any Tool] = [],
         instructions: String = "",
         configuration: AgentConfiguration = .default,
-        memory: (any AgentMemory)? = nil,
+        memory: (any Memory)? = nil,
         inferenceProvider: (any InferenceProvider)? = nil
     ) {
         self.tools = tools
@@ -119,11 +119,9 @@ public actor ReActAgent: Agent {
                 // Emit completed event
                 continuation.yield(.completed(result: result))
                 continuation.finish()
-            } catch let error as AgentError {
-                continuation.yield(.failed(error: error))
-                continuation.finish(throwing: error)
             } catch {
-                let agentError = AgentError.internalError(reason: error.localizedDescription)
+                // Cast to AgentError for event, but finish with Error type
+                let agentError = error as? AgentError ?? AgentError.internalError(reason: error.localizedDescription)
                 continuation.yield(.failed(error: agentError))
                 continuation.finish(throwing: agentError)
             }
@@ -505,6 +503,7 @@ public actor ReActAgent: Agent {
 
 public extension ReActAgent {
     /// Builder for creating ReActAgent instances with a fluent API.
+    /// Uses value semantics (struct) for Swift 6 concurrency safety.
     ///
     /// Example:
     /// ```swift
@@ -514,72 +513,78 @@ public extension ReActAgent {
     ///     .configuration(.default.maxIterations(5))
     ///     .build()
     /// ```
-    final class Builder: @unchecked Sendable {
+    struct Builder: Sendable {
         // MARK: Public
 
         /// Creates a new builder.
-        public init() {}
+        public init() {
+            self.tools = []
+            self.instructions = ""
+            self.configuration = .default
+            self.memory = nil
+            self.inferenceProvider = nil
+        }
 
         /// Sets the tools.
         /// - Parameter tools: The tools to use.
-        /// - Returns: Self for chaining.
-        @discardableResult
+        /// - Returns: A new builder with the updated tools.
         public func tools(_ tools: [any Tool]) -> Builder {
-            self.tools = tools
-            return self
+            var copy = self
+            copy.tools = tools
+            return copy
         }
 
         /// Adds a tool.
         /// - Parameter tool: The tool to add.
-        /// - Returns: Self for chaining.
-        @discardableResult
+        /// - Returns: A new builder with the tool added.
         public func addTool(_ tool: any Tool) -> Builder {
-            tools.append(tool)
-            return self
+            var copy = self
+            copy.tools.append(tool)
+            return copy
         }
 
         /// Adds built-in tools.
-        /// - Returns: Self for chaining.
-        @discardableResult
+        /// - Returns: A new builder with built-in tools added.
         public func withBuiltInTools() -> Builder {
-            tools.append(contentsOf: BuiltInTools.all)
-            return self
+            var copy = self
+            copy.tools.append(contentsOf: BuiltInTools.all)
+            return copy
         }
 
         /// Sets the instructions.
         /// - Parameter instructions: The system instructions.
-        /// - Returns: Self for chaining.
-        @discardableResult
+        /// - Returns: A new builder with the updated instructions.
         public func instructions(_ instructions: String) -> Builder {
-            self.instructions = instructions
-            return self
+            var copy = self
+            copy.instructions = instructions
+            return copy
         }
 
         /// Sets the configuration.
         /// - Parameter configuration: The agent configuration.
-        /// - Returns: Self for chaining.
-        @discardableResult
+        /// - Returns: A new builder with the updated configuration.
         public func configuration(_ configuration: AgentConfiguration) -> Builder {
-            self.configuration = configuration
-            return self
+            var copy = self
+            copy.configuration = configuration
+            return copy
         }
 
         /// Sets the memory system.
         /// - Parameter memory: The memory to use.
-        /// - Returns: Self for chaining.
-        @discardableResult
-        public func memory(_ memory: any AgentMemory) -> Builder {
-            self.memory = memory
-            return self
+        /// - Returns: A new builder with the updated memory.
+        public func memory(_ memory: any Memory) -> Builder {
+            var copy = self
+            copy.memory = memory
+            return copy
         }
 
         /// Sets the inference provider.
         /// - Parameter provider: The provider to use.
-        /// - Returns: Self for chaining.
-        @discardableResult
+        /// - Returns: A new builder with the updated provider.
         public func inferenceProvider(_ provider: any InferenceProvider) -> Builder {
-            inferenceProvider = provider
-            return self
+            var copy = self
+            copy.inferenceProvider = provider
+            return copy
         }
 
         /// Builds the agent.
@@ -596,10 +601,10 @@ public extension ReActAgent {
 
         // MARK: Private
 
-        private var tools: [any Tool] = []
-        private var instructions: String = ""
-        private var configuration: AgentConfiguration = .default
-        private var memory: (any AgentMemory)?
+        private var tools: [any Tool]
+        private var instructions: String
+        private var configuration: AgentConfiguration
+        private var memory: (any Memory)?
         private var inferenceProvider: (any InferenceProvider)?
     }
 }

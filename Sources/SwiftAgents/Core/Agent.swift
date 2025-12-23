@@ -33,7 +33,7 @@ public protocol Agent: Sendable {
     nonisolated var configuration: AgentConfiguration { get }
 
     /// Optional memory system for context management.
-    nonisolated var memory: (any AgentMemory)? { get }
+    nonisolated var memory: (any Memory)? { get }
 
     /// Optional custom inference provider.
     nonisolated var inferenceProvider: (any InferenceProvider)? { get }
@@ -47,7 +47,7 @@ public protocol Agent: Sendable {
     /// Streams the agent's execution, yielding events as they occur.
     /// - Parameter input: The user's input/query.
     /// - Returns: An async stream of agent events.
-    func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>
+    nonisolated func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error>
 
     /// Cancels any ongoing execution.
     func cancel() async
@@ -57,7 +57,7 @@ public protocol Agent: Sendable {
 
 public extension Agent {
     /// Default memory implementation (none).
-    var memory: (any AgentMemory)? { nil }
+    var memory: (any Memory)? { nil }
 
     /// Default inference provider (none, uses Foundation Models).
     var inferenceProvider: (any InferenceProvider)? { nil }
@@ -116,6 +116,7 @@ public protocol InferenceProvider: Sendable {
 ///     .maxTokens(2000)
 ///     .stopSequences("END", "STOP")
 /// ```
+@Builder
 public struct InferenceOptions: Sendable, Equatable {
     /// Default inference options.
     public static let `default` = InferenceOptions()
@@ -200,39 +201,12 @@ public struct InferenceOptions: Sendable, Equatable {
         self.frequencyPenalty = frequencyPenalty
     }
 
-    // MARK: - Fluent Builder Methods
+    // MARK: - Special Builder Methods
 
-    /// Sets the temperature for generation.
-    /// - Parameter value: The temperature (0.0-2.0). Values are clamped to valid range.
-    /// - Returns: A modified options instance.
-    public func temperature(_ value: Double) -> InferenceOptions {
-        var copy = self
-        copy.temperature = max(0.0, min(2.0, value))
-        return copy
-    }
-
-    /// Sets the maximum tokens to generate.
-    /// - Parameter value: The maximum token count, or nil for model default.
-    /// - Returns: A modified options instance.
-    public func maxTokens(_ value: Int?) -> InferenceOptions {
-        var copy = self
-        copy.maxTokens = value.flatMap { $0 > 0 ? $0 : nil }
-        return copy
-    }
-
-    /// Sets the stop sequences.
+    /// Sets the stop sequences from variadic arguments.
     /// - Parameter sequences: Sequences that stop generation.
     /// - Returns: A modified options instance.
     public func stopSequences(_ sequences: String...) -> InferenceOptions {
-        var copy = self
-        copy.stopSequences = sequences
-        return copy
-    }
-
-    /// Sets the stop sequences from an array.
-    /// - Parameter sequences: Sequences that stop generation.
-    /// - Returns: A modified options instance.
-    public func stopSequences(_ sequences: [String]) -> InferenceOptions {
         var copy = self
         copy.stopSequences = sequences
         return copy
@@ -252,42 +226,6 @@ public struct InferenceOptions: Sendable, Equatable {
     public func clearStopSequences() -> InferenceOptions {
         var copy = self
         copy.stopSequences = []
-        return copy
-    }
-
-    /// Sets the top-p (nucleus) sampling parameter.
-    /// - Parameter value: The top-p value (0.0-1.0).
-    /// - Returns: A modified options instance.
-    public func topP(_ value: Double?) -> InferenceOptions {
-        var copy = self
-        copy.topP = value.map { max(0.0, min(1.0, $0)) }
-        return copy
-    }
-
-    /// Sets the top-k sampling parameter.
-    /// - Parameter value: The top-k value.
-    /// - Returns: A modified options instance.
-    public func topK(_ value: Int?) -> InferenceOptions {
-        var copy = self
-        copy.topK = value.flatMap { $0 > 0 ? $0 : nil }
-        return copy
-    }
-
-    /// Sets the presence penalty.
-    /// - Parameter value: The presence penalty (-2.0 to 2.0).
-    /// - Returns: A modified options instance.
-    public func presencePenalty(_ value: Double?) -> InferenceOptions {
-        var copy = self
-        copy.presencePenalty = value.map { max(-2.0, min(2.0, $0)) }
-        return copy
-    }
-
-    /// Sets the frequency penalty.
-    /// - Parameter value: The frequency penalty (-2.0 to 2.0).
-    /// - Returns: A modified options instance.
-    public func frequencyPenalty(_ value: Double?) -> InferenceOptions {
-        var copy = self
-        copy.frequencyPenalty = value.map { max(-2.0, min(2.0, $0)) }
         return copy
     }
 

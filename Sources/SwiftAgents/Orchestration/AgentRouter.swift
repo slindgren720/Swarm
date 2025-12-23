@@ -71,21 +71,32 @@ public extension RouteCondition {
     ///
     /// - Parameters:
     ///   - substring: The substring to search for.
-    ///   - caseSensitive: Whether the search is case-sensitive. Default: false
+    ///   - isCaseSensitive: Whether the search is case-sensitive. Default: false
     /// - Returns: A condition that matches if the substring is found.
     ///
     /// Example:
     /// ```swift
-    /// let condition = RouteCondition.contains("weather", caseSensitive: false)
+    /// let condition = RouteCondition.contains("weather", isCaseSensitive: false)
     /// ```
-    static func contains(_ substring: String, caseSensitive: Bool = false) -> RouteCondition {
+    static func contains(_ substring: String, isCaseSensitive: Bool = false) -> RouteCondition {
         RouteCondition { input, _ in
-            if caseSensitive {
+            if isCaseSensitive {
                 input.contains(substring)
             } else {
                 input.localizedCaseInsensitiveContains(substring)
             }
         }
+    }
+
+    /// A condition that checks if the input contains a substring.
+    ///
+    /// - Parameters:
+    ///   - substring: The substring to search for.
+    ///   - caseSensitive: Whether the search is case-sensitive.
+    /// - Returns: A condition that matches if the substring is found.
+    @available(*, deprecated, message: "Use isCaseSensitive instead of caseSensitive")
+    static func contains(_ substring: String, caseSensitive: Bool) -> RouteCondition {
+        contains(substring, isCaseSensitive: caseSensitive)
     }
 
     /// A condition that matches the input against a regular expression pattern.
@@ -343,7 +354,7 @@ public actor AgentRouter: Agent {
     nonisolated public let instructions: String
     nonisolated public let configuration: AgentConfiguration
 
-    nonisolated public var memory: (any AgentMemory)? { nil }
+    nonisolated public var memory: (any Memory)? { nil }
     nonisolated public var inferenceProvider: (any InferenceProvider)? { nil }
 
     // MARK: - Initialization
@@ -490,12 +501,10 @@ public actor AgentRouter: Agent {
 
                 continuation.finish()
             } catch {
-                if let agentError = error as? AgentError {
-                    continuation.yield(.failed(error: agentError))
-                } else {
-                    continuation.yield(.failed(error: .internalError(reason: error.localizedDescription)))
-                }
-                continuation.finish()
+                // Wrap error if it's not already an AgentError
+                let agentError = (error as? AgentError) ?? .internalError(reason: error.localizedDescription)
+                continuation.yield(.failed(error: agentError))
+                continuation.finish(throwing: agentError)
             }
         }
         return stream
