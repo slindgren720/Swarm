@@ -459,55 +459,21 @@ public actor AgentRouter: Agent {
     /// - Parameter input: The user's input/query.
     /// - Returns: An async stream of agent events.
     nonisolated public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error> {
-        let (stream, continuation) = AsyncThrowingStream<AgentEvent, Error>.makeStream()
-        Task { @Sendable [weak self] in
-            guard let self else {
-                continuation.finish()
-                return
-            }
-
+        StreamHelper.makeTrackedStream(for: self) { actor, continuation in
+            continuation.yield(.started(input: input))
             do {
-                continuation.yield(.started(input: input))
-
-                if await isCancelled {
-                    continuation.yield(.cancelled)
-                    continuation.finish()
-                    return
-                }
-
-                // Find the first matching route
-                let selectedRoute = await findMatchingRoute(input: input, context: nil)
-
-                guard let route = selectedRoute else {
-                    // No route matched - try fallback
-                    if let fallback = await fallbackAgent {
-                        for try await event in fallback.stream(input) {
-                            continuation.yield(event)
-                        }
-                    } else {
-                        let error = OrchestrationError.routingFailed(
-                            reason: "No route matched input and no fallback agent configured"
-                        )
-                        continuation.yield(.failed(error: .internalError(reason: error.localizedDescription)))
-                    }
-                    continuation.finish()
-                    return
-                }
-
-                // Stream from the matched route's agent
-                for try await event in route.agent.stream(input) {
-                    continuation.yield(event)
-                }
-
+                let result = try await actor.run(input)
+                continuation.yield(.completed(result: result))
                 continuation.finish()
+            } catch let error as AgentError {
+                continuation.yield(.failed(error: error))
+                continuation.finish(throwing: error)
             } catch {
-                // Wrap error if it's not already an AgentError
-                let agentError = (error as? AgentError) ?? .internalError(reason: error.localizedDescription)
+                let agentError = AgentError.internalError(reason: error.localizedDescription)
                 continuation.yield(.failed(error: agentError))
-                continuation.finish(throwing: agentError)
+                continuation.finish(throwing: error)
             }
         }
-        return stream
     }
 
     /// Cancels any ongoing routing execution.

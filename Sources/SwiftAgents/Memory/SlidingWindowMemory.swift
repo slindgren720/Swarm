@@ -83,6 +83,22 @@ public actor SlidingWindowMemory: Memory {
             let removedTokens = tokenEstimator.estimateTokens(for: removed.formattedContent)
             currentTokenCount -= removedTokens
         }
+
+        // Periodic recalibration to prevent token count drift
+        operationsSinceRecalibration += 1
+        if operationsSinceRecalibration >= recalibrationInterval {
+            recalibrateTokenCount()
+            operationsSinceRecalibration = 0
+        }
+    }
+
+    /// Recalibrates token count by recalculating from all messages.
+    ///
+    /// Called automatically to prevent drift from cumulative estimation errors.
+    private func recalibrateTokenCount() {
+        currentTokenCount = messages.reduce(0) { total, message in
+            total + tokenEstimator.estimateTokens(for: message.formattedContent)
+        }
     }
 
     public func context(for _: String, tokenLimit: Int) async -> String {
@@ -97,6 +113,7 @@ public actor SlidingWindowMemory: Memory {
     public func clear() async {
         messages.removeAll()
         currentTokenCount = 0
+        operationsSinceRecalibration = 0
     }
 
     // MARK: Private
@@ -109,6 +126,12 @@ public actor SlidingWindowMemory: Memory {
 
     /// Current estimated token count.
     private var currentTokenCount: Int = 0
+
+    /// Number of add operations since last recalibration.
+    private var operationsSinceRecalibration: Int = 0
+
+    /// How often to recalibrate token count to prevent drift.
+    private let recalibrationInterval: Int = 100
 }
 
 // MARK: - Batch Operations

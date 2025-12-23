@@ -140,6 +140,29 @@ public struct InferenceProviderComponent: AgentComponent {
     }
 }
 
+// MARK: - TracerComponent
+
+/// Tracer component for agent observability.
+///
+/// Example:
+/// ```swift
+/// let agent = ReActAgent {
+///     Instructions("Observable agent.")
+///     TracerComponent(ConsoleTracer())
+/// }
+/// ```
+public struct TracerComponent: AgentComponent {
+    /// The tracer.
+    public let tracer: any Tracer
+
+    /// Creates a tracer component.
+    ///
+    /// - Parameter tracer: The tracer to use for observability.
+    public init(_ tracer: any Tracer) {
+        self.tracer = tracer
+    }
+}
+
 // MARK: - AgentBuilder
 
 /// A result builder for creating agents declaratively.
@@ -176,6 +199,7 @@ public struct AgentBuilder {
         var memory: (any Memory)?
         var configuration: AgentConfiguration?
         var inferenceProvider: (any InferenceProvider)?
+        var tracer: (any Tracer)?
     }
 
     /// Builds a block of components.
@@ -195,6 +219,9 @@ public struct AgentBuilder {
             }
             if let provider = component.inferenceProvider {
                 result.inferenceProvider = provider
+            }
+            if let tracer = component.tracer {
+                result.tracer = tracer
             }
         }
         return result
@@ -242,6 +269,8 @@ public struct AgentBuilder {
             result.configuration = config.configuration
         case let provider as InferenceProviderComponent:
             result.inferenceProvider = provider.provider
+        case let tracerComponent as TracerComponent:
+            result.tracer = tracerComponent.tracer
         default:
             break
         }
@@ -277,7 +306,8 @@ public extension ReActAgent {
             instructions: components.instructions ?? "",
             configuration: components.configuration ?? .default,
             memory: components.memory,
-            inferenceProvider: components.inferenceProvider
+            inferenceProvider: components.inferenceProvider,
+            tracer: components.tracer
         )
     }
 }

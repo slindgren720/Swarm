@@ -38,6 +38,9 @@ public protocol Agent: Sendable {
     /// Optional custom inference provider.
     nonisolated var inferenceProvider: (any InferenceProvider)? { get }
 
+    /// Optional tracer for observability.
+    nonisolated var tracer: (any Tracer)? { get }
+
     /// Executes the agent with the given input and returns a result.
     /// - Parameter input: The user's input/query.
     /// - Returns: The result of the agent's execution.
@@ -57,10 +60,13 @@ public protocol Agent: Sendable {
 
 public extension Agent {
     /// Default memory implementation (none).
-    var memory: (any Memory)? { nil }
+    nonisolated var memory: (any Memory)? { nil }
 
     /// Default inference provider (none, uses Foundation Models).
-    var inferenceProvider: (any InferenceProvider)? { nil }
+    nonisolated var inferenceProvider: (any InferenceProvider)? { nil }
+
+    /// Default tracer implementation (none).
+    nonisolated var tracer: (any Tracer)? { nil }
 }
 
 // MARK: - InferenceProvider
@@ -262,18 +268,45 @@ public struct InferenceResponse: Sendable, Equatable {
 
     /// A parsed tool call from the model's response.
     public struct ParsedToolCall: Sendable, Equatable {
+        /// Unique identifier for this tool call (required for multi-turn tool conversations).
+        public let id: String?
+
         /// The name of the tool to call.
         public let name: String
+
         /// The arguments for the tool.
         public let arguments: [String: SendableValue]
 
         /// Creates a parsed tool call.
         /// - Parameters:
+        ///   - id: Unique identifier for the tool call. Default: nil
         ///   - name: The tool name.
         ///   - arguments: The tool arguments.
-        public init(name: String, arguments: [String: SendableValue]) {
+        public init(id: String? = nil, name: String, arguments: [String: SendableValue]) {
+            self.id = id
             self.name = name
             self.arguments = arguments
+        }
+    }
+
+    /// Token usage statistics from inference.
+    public struct TokenUsage: Sendable, Equatable {
+        /// Number of tokens in the input/prompt.
+        public let inputTokens: Int
+
+        /// Number of tokens in the output/response.
+        public let outputTokens: Int
+
+        /// Total tokens used.
+        public var totalTokens: Int { inputTokens + outputTokens }
+
+        /// Creates token usage statistics.
+        /// - Parameters:
+        ///   - inputTokens: Number of tokens in the input/prompt.
+        ///   - outputTokens: Number of tokens in the output/response.
+        public init(inputTokens: Int, outputTokens: Int) {
+            self.inputTokens = inputTokens
+            self.outputTokens = outputTokens
         }
     }
 
@@ -286,6 +319,9 @@ public struct InferenceResponse: Sendable, Equatable {
     /// The reason generation finished.
     public let finishReason: FinishReason
 
+    /// Token usage statistics, if available.
+    public let usage: TokenUsage?
+
     /// Whether this response includes tool calls.
     public var hasToolCalls: Bool {
         !toolCalls.isEmpty
@@ -296,13 +332,16 @@ public struct InferenceResponse: Sendable, Equatable {
     ///   - content: Text content. Default: nil
     ///   - toolCalls: Tool calls. Default: []
     ///   - finishReason: Finish reason. Default: .completed
+    ///   - usage: Token usage statistics. Default: nil
     public init(
         content: String? = nil,
         toolCalls: [ParsedToolCall] = [],
-        finishReason: FinishReason = .completed
+        finishReason: FinishReason = .completed,
+        usage: TokenUsage? = nil
     ) {
         self.content = content
         self.toolCalls = toolCalls
         self.finishReason = finishReason
+        self.usage = usage
     }
 }

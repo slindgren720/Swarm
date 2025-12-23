@@ -38,6 +38,7 @@ public actor ReActAgent: Agent {
     nonisolated public let configuration: AgentConfiguration
     nonisolated public let memory: (any Memory)?
     nonisolated public let inferenceProvider: (any InferenceProvider)?
+    nonisolated public let tracer: (any Tracer)?
 
     // MARK: - Initialization
 
@@ -48,18 +49,21 @@ public actor ReActAgent: Agent {
     ///   - configuration: Agent configuration settings. Default: .default
     ///   - memory: Optional memory system. Default: nil
     ///   - inferenceProvider: Optional custom inference provider. Default: nil
+    ///   - tracer: Optional tracer for observability. Default: nil
     public init(
         tools: [any Tool] = [],
         instructions: String = "",
         configuration: AgentConfiguration = .default,
         memory: (any Memory)? = nil,
-        inferenceProvider: (any InferenceProvider)? = nil
+        inferenceProvider: (any InferenceProvider)? = nil,
+        tracer: (any Tracer)? = nil
     ) {
         self.tools = tools
         self.instructions = instructions
         self.configuration = configuration
         self.memory = memory
         self.inferenceProvider = inferenceProvider
+        self.tracer = tracer
         toolRegistry = ToolRegistry(tools: tools)
     }
 
@@ -103,30 +107,21 @@ public actor ReActAgent: Agent {
     /// - Parameter input: The user's input/query.
     /// - Returns: An async stream of agent events.
     nonisolated public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error> {
-        let (stream, continuation) = AsyncThrowingStream<AgentEvent, Error>.makeStream()
-        Task { @Sendable [weak self] in
-            guard let self else {
-                continuation.finish()
-                return
-            }
+        StreamHelper.makeTrackedStream(for: self) { agent, continuation in
+            continuation.yield(.started(input: input))
             do {
-                // Emit started event
-                continuation.yield(.started(input: input))
-
-                // Run the agent
-                let result = try await run(input)
-
-                // Emit completed event
+                let result = try await agent.run(input)
                 continuation.yield(.completed(result: result))
                 continuation.finish()
+            } catch let error as AgentError {
+                continuation.yield(.failed(error: error))
+                continuation.finish(throwing: error)
             } catch {
-                // Cast to AgentError for event, but finish with Error type
-                let agentError = error as? AgentError ?? AgentError.internalError(reason: error.localizedDescription)
+                let agentError = AgentError.internalError(reason: error.localizedDescription)
                 continuation.yield(.failed(error: agentError))
-                continuation.finish(throwing: agentError)
+                continuation.finish(throwing: error)
             }
         }
-        return stream
     }
 
     /// Cancels any ongoing execution.
@@ -523,6 +518,7 @@ public extension ReActAgent {
             self.configuration = .default
             self.memory = nil
             self.inferenceProvider = nil
+            self.tracer = nil
         }
 
         /// Sets the tools.
@@ -587,6 +583,15 @@ public extension ReActAgent {
             return copy
         }
 
+        /// Sets the tracer for observability.
+        /// - Parameter tracer: The tracer to use.
+        /// - Returns: A new builder with the updated tracer.
+        public func tracer(_ tracer: any Tracer) -> Builder {
+            var copy = self
+            copy.tracer = tracer
+            return copy
+        }
+
         /// Builds the agent.
         /// - Returns: A new ReActAgent instance.
         public func build() -> ReActAgent {
@@ -595,7 +600,8 @@ public extension ReActAgent {
                 instructions: instructions,
                 configuration: configuration,
                 memory: memory,
-                inferenceProvider: inferenceProvider
+                inferenceProvider: inferenceProvider,
+                tracer: tracer
             )
         }
 
@@ -606,5 +612,6 @@ public extension ReActAgent {
         private var configuration: AgentConfiguration
         private var memory: (any Memory)?
         private var inferenceProvider: (any InferenceProvider)?
+        private var tracer: (any Tracer)?
     }
 }

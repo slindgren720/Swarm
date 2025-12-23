@@ -617,86 +617,21 @@ public actor SupervisorAgent: Agent {
     }
 
     nonisolated public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error> {
-        let (stream, continuation) = AsyncThrowingStream<AgentEvent, Error>.makeStream()
-
-        Task { @Sendable [weak self] in
-            guard let self else {
-                continuation.finish()
-                return
-            }
-
+        StreamHelper.makeTrackedStream(for: self) { actor, continuation in
+            continuation.yield(.started(input: input))
             do {
-                continuation.yield(.started(input: input))
-
-                // Get agent descriptions for routing
-                let descriptions = await agentRegistry.map(\.description)
-
-                // Create context if tracking is enabled
-                let trackingEnabled = await enableContextTracking
-                let context: AgentContext? = trackingEnabled ? AgentContext(input: input) : nil
-
-                // Select the appropriate agent
-                let strategy = await routingStrategy
-                let decision = try await strategy.selectAgent(
-                    for: input,
-                    from: descriptions,
-                    context: context
-                )
-
-                // Emit routing decision
-                continuation.yield(.thinking(
-                    thought: "Routing to agent: \(decision.selectedAgentName) (confidence: \(decision.confidence))"
-                ))
-
-                // Find the selected agent
-                let registry = await agentRegistry
-                guard let selectedEntry = registry.first(where: { $0.name == decision.selectedAgentName }) else {
-                    // Agent not found, use fallback if available
-                    let fallback = await fallbackAgent
-                    if let fallback {
-                        for try await event in fallback.stream(input) {
-                            continuation.yield(event)
-                        }
-                        continuation.finish()
-                        return
-                    } else {
-                        throw AgentError.internalError(
-                            reason: "Selected agent '\(decision.selectedAgentName)' not found and no fallback configured"
-                        )
-                    }
-                }
-
-                // Track execution in context
-                if let context {
-                    await context.recordExecution(agentName: decision.selectedAgentName)
-                }
-
-                // Stream from the selected agent
-                for try await event in selectedEntry.agent.stream(input) {
-                    continuation.yield(event)
-                }
-
+                let result = try await actor.run(input)
+                continuation.yield(.completed(result: result))
                 continuation.finish()
-
+            } catch let error as AgentError {
+                continuation.yield(.failed(error: error))
+                continuation.finish(throwing: error)
             } catch {
-                // If routing fails and we have a fallback, use it
-                let fallback = await fallbackAgent
-                if let fallback {
-                    do {
-                        for try await event in fallback.stream(input) {
-                            continuation.yield(event)
-                        }
-                        continuation.finish()
-                    } catch {
-                        continuation.finish(throwing: error)
-                    }
-                } else {
-                    continuation.finish(throwing: error)
-                }
+                let agentError = AgentError.internalError(reason: error.localizedDescription)
+                continuation.yield(.failed(error: agentError))
+                continuation.finish(throwing: error)
             }
         }
-
-        return stream
     }
 
     public func cancel() async {

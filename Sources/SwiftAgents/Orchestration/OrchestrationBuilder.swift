@@ -737,14 +737,12 @@ public struct Orchestration: Sendable {
     /// - Parameter input: The input string to process.
     /// - Returns: An async stream of agent events from all steps.
     public func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error> {
-        let (stream, continuation) = AsyncThrowingStream<AgentEvent, Error>.makeStream()
-
-        Task { @Sendable in
+        let stepsCopy = steps
+        return StreamHelper.makeTrackedStream { continuation in
+            continuation.yield(.started(input: input))
             do {
-                continuation.yield(.started(input: input))
-
                 var currentInput = input
-                for (index, step) in steps.enumerated() {
+                for (index, step) in stepsCopy.enumerated() {
                     continuation.yield(.iterationStarted(number: index + 1))
 
                     let result = try await step.execute(currentInput)
@@ -756,17 +754,15 @@ public struct Orchestration: Sendable {
                 let finalResult = AgentResult(output: currentInput)
                 continuation.yield(.completed(result: finalResult))
                 continuation.finish()
-            } catch let agentError as AgentError {
-                continuation.yield(.failed(error: agentError))
-                continuation.finish(throwing: agentError)
+            } catch let error as AgentError {
+                continuation.yield(.failed(error: error))
+                continuation.finish(throwing: error)
             } catch {
                 let agentError = AgentError.internalError(reason: error.localizedDescription)
                 continuation.yield(.failed(error: agentError))
-                continuation.finish(throwing: agentError)
+                continuation.finish(throwing: error)
             }
         }
-
-        return stream
     }
 }
 
