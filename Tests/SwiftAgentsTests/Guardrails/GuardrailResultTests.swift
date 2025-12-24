@@ -1,0 +1,340 @@
+// GuardrailResultTests.swift
+// SwiftAgentsTests
+//
+// TDD tests for GuardrailResult - Sprint 1 of Guardrails system
+// These tests define the contract for GuardrailResult before implementation
+
+import Foundation
+@testable import SwiftAgents
+import Testing
+
+// MARK: - GuardrailResultTests
+
+@Suite("GuardrailResult Tests")
+struct GuardrailResultTests {
+    
+    // MARK: - Passed Result Tests
+    
+    @Test("Passed result has tripwireTriggered set to false")
+    func testPassedResultDefaults() {
+        // When
+        let result = GuardrailResult.passed()
+        
+        // Then
+        #expect(result.tripwireTriggered == false)
+        #expect(result.message == nil)
+        #expect(result.outputInfo == nil)
+        #expect(result.metadata.isEmpty)
+    }
+    
+    @Test("Passed result preserves custom message")
+    func testPassedResultWithMessage() {
+        // Given
+        let message = "Input validation successful"
+        
+        // When
+        let result = GuardrailResult.passed(message: message)
+        
+        // Then
+        #expect(result.tripwireTriggered == false)
+        #expect(result.message == message)
+        #expect(result.outputInfo == nil)
+        #expect(result.metadata.isEmpty)
+    }
+    
+    @Test("Passed result preserves outputInfo")
+    func testPassedResultWithOutputInfo() {
+        // Given
+        let outputInfo: SendableValue = .dictionary([
+            "tokensChecked": .int(42),
+            "passed": .bool(true)
+        ])
+        
+        // When
+        let result = GuardrailResult.passed(outputInfo: outputInfo)
+        
+        // Then
+        #expect(result.tripwireTriggered == false)
+        #expect(result.outputInfo == outputInfo)
+        #expect(result.message == nil)
+        #expect(result.metadata.isEmpty)
+    }
+    
+    @Test("Passed result preserves metadata")
+    func testPassedResultWithMetadata() {
+        // Given
+        let metadata: [String: SendableValue] = [
+            "checkDuration": .double(0.123),
+            "version": .string("1.0")
+        ]
+        
+        // When
+        let result = GuardrailResult.passed(metadata: metadata)
+        
+        // Then
+        #expect(result.tripwireTriggered == false)
+        #expect(result.metadata == metadata)
+        #expect(result.message == nil)
+        #expect(result.outputInfo == nil)
+    }
+    
+    @Test("Passed result with all parameters")
+    func testPassedResultWithAllParameters() {
+        // Given
+        let message = "All checks passed"
+        let outputInfo: SendableValue = .dictionary(["status": .string("ok")])
+        let metadata: [String: SendableValue] = ["timestamp": .int(1234567890)]
+        
+        // When
+        let result = GuardrailResult.passed(
+            message: message,
+            outputInfo: outputInfo,
+            metadata: metadata
+        )
+        
+        // Then
+        #expect(result.tripwireTriggered == false)
+        #expect(result.message == message)
+        #expect(result.outputInfo == outputInfo)
+        #expect(result.metadata == metadata)
+    }
+    
+    // MARK: - Tripwire Result Tests
+    
+    @Test("Tripwire result has tripwireTriggered set to true")
+    func testTripwireResult() {
+        // Given
+        let message = "Sensitive data detected"
+        
+        // When
+        let result = GuardrailResult.tripwire(message: message)
+        
+        // Then
+        #expect(result.tripwireTriggered == true)
+        #expect(result.message == message)
+        #expect(result.outputInfo == nil)
+        #expect(result.metadata.isEmpty)
+    }
+    
+    @Test("Tripwire result preserves outputInfo")
+    func testTripwireResultWithOutputInfo() {
+        // Given
+        let message = "Policy violation"
+        let outputInfo: SendableValue = .dictionary([
+            "violationType": .string("PII_DETECTED"),
+            "detectedPatterns": .array([.string("SSN"), .string("CREDIT_CARD")])
+        ])
+        
+        // When
+        let result = GuardrailResult.tripwire(message: message, outputInfo: outputInfo)
+        
+        // Then
+        #expect(result.tripwireTriggered == true)
+        #expect(result.message == message)
+        #expect(result.outputInfo == outputInfo)
+        #expect(result.metadata.isEmpty)
+    }
+    
+    @Test("Tripwire result with all parameters")
+    func testTripwireResultWithAllParameters() {
+        // Given
+        let message = "Content filter triggered"
+        let outputInfo: SendableValue = .string("Inappropriate content found")
+        let metadata: [String: SendableValue] = [
+            "severity": .string("high"),
+            "category": .string("profanity")
+        ]
+        
+        // When
+        let result = GuardrailResult.tripwire(
+            message: message,
+            outputInfo: outputInfo,
+            metadata: metadata
+        )
+        
+        // Then
+        #expect(result.tripwireTriggered == true)
+        #expect(result.message == message)
+        #expect(result.outputInfo == outputInfo)
+        #expect(result.metadata == metadata)
+    }
+    
+    // MARK: - Equatable Conformance Tests
+    
+    @Test("Two passed results with same values are equal")
+    func testEquatablePassedResults() {
+        // Given
+        let result1 = GuardrailResult.passed(message: "test")
+        let result2 = GuardrailResult.passed(message: "test")
+        
+        // Then
+        #expect(result1 == result2)
+    }
+    
+    @Test("Two tripwire results with same values are equal")
+    func testEquatableTripwireResults() {
+        // Given
+        let outputInfo: SendableValue = .dictionary(["key": .string("value")])
+        let result1 = GuardrailResult.tripwire(message: "error", outputInfo: outputInfo)
+        let result2 = GuardrailResult.tripwire(message: "error", outputInfo: outputInfo)
+        
+        // Then
+        #expect(result1 == result2)
+    }
+    
+    @Test("Passed and tripwire results with same message are not equal")
+    func testEquatableDifferentTripwireState() {
+        // Given
+        let message = "test message"
+        let passed = GuardrailResult.passed(message: message)
+        let tripwire = GuardrailResult.tripwire(message: message)
+        
+        // Then
+        #expect(passed != tripwire)
+    }
+    
+    @Test("Results with different messages are not equal")
+    func testEquatableDifferentMessages() {
+        // Given
+        let result1 = GuardrailResult.passed(message: "message1")
+        let result2 = GuardrailResult.passed(message: "message2")
+        
+        // Then
+        #expect(result1 != result2)
+    }
+    
+    @Test("Results with different outputInfo are not equal")
+    func testEquatableDifferentOutputInfo() {
+        // Given
+        let result1 = GuardrailResult.passed(outputInfo: .string("info1"))
+        let result2 = GuardrailResult.passed(outputInfo: .string("info2"))
+        
+        // Then
+        #expect(result1 != result2)
+    }
+    
+    @Test("Results with different metadata are not equal")
+    func testEquatableDifferentMetadata() {
+        // Given
+        let metadata1: [String: SendableValue] = ["key": .string("value1")]
+        let metadata2: [String: SendableValue] = ["key": .string("value2")]
+        let result1 = GuardrailResult.passed(metadata: metadata1)
+        let result2 = GuardrailResult.passed(metadata: metadata2)
+        
+        // Then
+        #expect(result1 != result2)
+    }
+    
+    // MARK: - Sendable Conformance Tests
+    
+    @Test("GuardrailResult is Sendable across async boundaries")
+    func testSendableInAsyncContext() async {
+        // Given
+        let result = GuardrailResult.passed(message: "test")
+        
+        // When - pass result across async boundary
+        let receivedResult = await withCheckedContinuation { continuation in
+            Task {
+                continuation.resume(returning: result)
+            }
+        }
+        
+        // Then
+        #expect(receivedResult == result)
+        #expect(receivedResult.tripwireTriggered == false)
+        #expect(receivedResult.message == "test")
+    }
+    
+    @Test("GuardrailResult can be used in Task context")
+    func testSendableInTaskContext() async {
+        // Given
+        let outputInfo: SendableValue = .dictionary(["status": .string("checked")])
+        let result = GuardrailResult.tripwire(message: "blocked", outputInfo: outputInfo)
+        
+        // When - use in Task
+        let taskResult = await Task {
+            return result
+        }.value
+        
+        // Then
+        #expect(taskResult == result)
+        #expect(taskResult.tripwireTriggered == true)
+        #expect(taskResult.message == "blocked")
+        #expect(taskResult.outputInfo == outputInfo)
+    }
+    
+    @Test("GuardrailResult can be stored in actor")
+    func testSendableWithActor() async {
+        // Given
+        actor ResultStore {
+            private var storedResult: GuardrailResult?
+            
+            func store(_ result: GuardrailResult) {
+                storedResult = result
+            }
+            
+            func retrieve() -> GuardrailResult? {
+                storedResult
+            }
+        }
+        
+        let store = ResultStore()
+        let result = GuardrailResult.passed(message: "stored")
+        
+        // When
+        await store.store(result)
+        let retrieved = await store.retrieve()
+        
+        // Then
+        #expect(retrieved == result)
+    }
+    
+    // MARK: - Edge Cases
+    
+    @Test("Result with nil message and nil outputInfo")
+    func testResultWithAllNils() {
+        // When
+        let result = GuardrailResult.passed(message: nil, outputInfo: nil)
+        
+        // Then
+        #expect(result.tripwireTriggered == false)
+        #expect(result.message == nil)
+        #expect(result.outputInfo == nil)
+        #expect(result.metadata.isEmpty)
+    }
+    
+    @Test("Result with empty metadata dictionary")
+    func testResultWithEmptyMetadata() {
+        // Given
+        let emptyMetadata: [String: SendableValue] = [:]
+        
+        // When
+        let result = GuardrailResult.passed(metadata: emptyMetadata)
+        
+        // Then
+        #expect(result.metadata.isEmpty)
+    }
+    
+    @Test("Result with complex nested outputInfo")
+    func testResultWithComplexOutputInfo() {
+        // Given
+        let complexInfo: SendableValue = .dictionary([
+            "analysis": .dictionary([
+                "score": .double(0.85),
+                "flags": .array([.string("warning1"), .string("warning2")]),
+                "metadata": .dictionary([
+                    "model": .string("gpt-4"),
+                    "version": .int(2)
+                ])
+            ]),
+            "timestamp": .int(1703548800)
+        ])
+        
+        // When
+        let result = GuardrailResult.tripwire(message: "Complex check", outputInfo: complexInfo)
+        
+        // Then
+        #expect(result.outputInfo == complexInfo)
+        #expect(result.tripwireTriggered == true)
+    }
+}
