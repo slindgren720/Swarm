@@ -138,7 +138,8 @@ final class AgentMacroTests: XCTestCase {
                     }
 
                     /// A fluent builder for creating AssistantAgent instances.
-                    public final class Builder: @unchecked Sendable {
+                    /// Uses value semantics (struct) for Swift 6 concurrency safety.
+                    public struct Builder: Sendable {
                         private var _tools: [any Tool] = []
                         private var _instructions: String = ""
                         private var _configuration: AgentConfiguration = .default
@@ -332,7 +333,8 @@ final class AgentMacroTests: XCTestCase {
                     }
 
                     /// A fluent builder for creating MathAgent instances.
-                    public final class Builder: @unchecked Sendable {
+                    /// Uses value semantics (struct) for Swift 6 concurrency safety.
+                    public struct Builder: Sendable {
                         private var _tools: [any Tool] = []
                         private var _instructions: String = ""
                         private var _configuration: AgentConfiguration = .default
@@ -516,7 +518,8 @@ final class AgentMacroTests: XCTestCase {
                     }
 
                     /// A fluent builder for creating IncompleteAgent instances.
-                    public final class Builder: @unchecked Sendable {
+                    /// Uses value semantics (struct) for Swift 6 concurrency safety.
+                    public struct Builder: Sendable {
                         private var _tools: [any Tool] = []
                         private var _instructions: String = ""
                         private var _configuration: AgentConfiguration = .default

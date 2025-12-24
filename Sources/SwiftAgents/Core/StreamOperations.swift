@@ -536,6 +536,268 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
             continuation.finish()
         }
     }
+
+    // MARK: - Retry
+
+    /// Retries the upstream stream on error with optional delay between attempts.
+    ///
+    /// When the upstream stream throws an error, this operator will restart
+    /// the stream from the beginning, up to the specified maximum attempts.
+    ///
+    /// - Parameters:
+    ///   - maxAttempts: Maximum number of attempts (including the initial attempt). Default: 3
+    ///   - delay: Duration to wait between retry attempts. Default: zero
+    /// - Returns: A stream that retries on failure.
+    ///
+    /// Example:
+    /// ```swift
+    /// // Retry up to 3 times with 1 second delay between attempts
+    /// for try await event in stream.retry(maxAttempts: 3, delay: .seconds(1)) {
+    ///     print(event)
+    /// }
+    /// ```
+    ///
+    /// - Note: This operator cannot restart the original stream; it only works
+    ///   when the stream source can be recreated. For agent streams, consider
+    ///   using `ResilientAgent` which provides more sophisticated retry logic.
+    func retry(
+        maxAttempts: Int = 3,
+        delay: Duration = .zero
+    ) -> AsyncThrowingStream<AgentEvent, Error> {
+        let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream()
+
+        let task = Task { @Sendable in
+            var attempts = 0
+            var lastError: Error?
+
+            while attempts < maxAttempts {
+                attempts += 1
+                do {
+                    for try await event in self {
+                        continuation.yield(event)
+                    }
+                    // Stream completed successfully
+                    continuation.finish()
+                    return
+                } catch {
+                    lastError = error
+                    if attempts < maxAttempts, delay != .zero {
+                        try await Task.sleep(for: delay)
+                    }
+                }
+            }
+
+            // All attempts exhausted
+            if let error = lastError {
+                continuation.finish(throwing: error)
+            } else {
+                continuation.finish()
+            }
+        }
+
+        continuation.onTermination = { @Sendable _ in
+            task.cancel()
+        }
+
+        return stream
+    }
+
+    // MARK: - Throttle
+
+    /// Limits the emission rate to one event per time interval.
+    ///
+    /// Events that arrive faster than the specified interval are dropped.
+    /// The first event in each interval is always emitted.
+    ///
+    /// - Parameter interval: The minimum time between emitted events.
+    /// - Returns: A throttled stream.
+    ///
+    /// Example:
+    /// ```swift
+    /// // Emit at most one event per second
+    /// for try await event in stream.throttle(for: .seconds(1)) {
+    ///     print(event)
+    /// }
+    /// ```
+    func throttle(for interval: Duration) -> AsyncThrowingStream<AgentEvent, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            var lastEmitTime: ContinuousClock.Instant?
+            let intervalSeconds = Double(interval.components.seconds) + Double(interval.components.attoseconds) / 1e18
+
+            for try await event in self {
+                let now = ContinuousClock.now
+
+                if let lastTime = lastEmitTime {
+                    let elapsed = now - lastTime
+                    let elapsedSeconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+
+                    if elapsedSeconds >= intervalSeconds {
+                        continuation.yield(event)
+                        lastEmitTime = now
+                    }
+                    // Events within the interval are dropped
+                } else {
+                    // First event is always emitted
+                    continuation.yield(event)
+                    lastEmitTime = now
+                }
+            }
+            continuation.finish()
+        }
+    }
+
+    // MARK: - Buffer
+
+    /// Collects events into batches of the specified count before yielding.
+    ///
+    /// Events are buffered until the specified count is reached, then yielded
+    /// as an array. Any remaining events when the stream completes are yielded
+    /// as a final (possibly smaller) batch.
+    ///
+    /// - Parameter count: The number of events to collect before yielding.
+    /// - Returns: A stream of event arrays.
+    ///
+    /// Example:
+    /// ```swift
+    /// // Process events in batches of 5
+    /// for try await batch in stream.buffer(count: 5) {
+    ///     print("Received batch of \(batch.count) events")
+    /// }
+    /// ```
+    func buffer(count: Int) -> AsyncThrowingStream<[AgentEvent], Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            var buffer: [AgentEvent] = []
+            buffer.reserveCapacity(count)
+
+            for try await event in self {
+                buffer.append(event)
+                if buffer.count >= count {
+                    continuation.yield(buffer)
+                    buffer.removeAll(keepingCapacity: true)
+                }
+            }
+
+            // Yield any remaining events
+            if !buffer.isEmpty {
+                continuation.yield(buffer)
+            }
+            continuation.finish()
+        }
+    }
+
+    // MARK: - CompactMap
+
+    /// Maps events and filters out nil results.
+    ///
+    /// Applies the transform to each event and only yields non-nil results.
+    /// This combines `map` and `filter` into a single operation.
+    ///
+    /// - Parameter transform: A closure that transforms events, returning nil to skip.
+    /// - Returns: A stream of transformed non-nil values.
+    ///
+    /// Example:
+    /// ```swift
+    /// // Extract only thinking content as uppercase strings
+    /// let thoughts = stream.compactMap { event -> String? in
+    ///     if case .thinking(let thought) = event {
+    ///         return thought.uppercased()
+    ///     }
+    ///     return nil
+    /// }
+    /// ```
+    func compactMap<T: Sendable>(
+        _ transform: @escaping @Sendable (AgentEvent) async throws -> T?
+    ) -> AsyncThrowingStream<T, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            for try await event in self {
+                if let transformed = try await transform(event) {
+                    continuation.yield(transformed)
+                }
+            }
+            continuation.finish()
+        }
+    }
+
+    // MARK: - DistinctUntilChanged
+
+    /// Skips consecutive duplicate events.
+    ///
+    /// Compares each event to the previous one using `Equatable` conformance
+    /// and only emits events that differ from the previous.
+    ///
+    /// - Returns: A stream with consecutive duplicates removed.
+    ///
+    /// Example:
+    /// ```swift
+    /// for try await event in stream.distinctUntilChanged() {
+    ///     // Only receives events different from the previous
+    /// }
+    /// ```
+    func distinctUntilChanged() -> AsyncThrowingStream<AgentEvent, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            var previousEvent: AgentEvent?
+
+            for try await event in self {
+                if let previous = previousEvent {
+                    if !event.isEqual(to: previous) {
+                        continuation.yield(event)
+                        previousEvent = event
+                    }
+                } else {
+                    continuation.yield(event)
+                    previousEvent = event
+                }
+            }
+            continuation.finish()
+        }
+    }
+
+    // MARK: - Scan
+
+    /// Reduces the stream while emitting intermediate values.
+    ///
+    /// Like `reduce`, but yields each intermediate accumulator value as it
+    /// is computed, rather than only the final result.
+    ///
+    /// - Parameters:
+    ///   - initial: The initial accumulator value.
+    ///   - combine: A closure that combines the accumulator with each event.
+    /// - Returns: A stream of intermediate accumulated values.
+    ///
+    /// Example:
+    /// ```swift
+    /// // Count events as they arrive
+    /// for try await count in stream.scan(0) { acc, _ in acc + 1 } {
+    ///     print("Events so far: \(count)")
+    /// }
+    /// ```
+    ///
+    /// Example:
+    /// ```swift
+    /// // Accumulate all thinking content
+    /// for try await combined in stream.scan("") { acc, event in
+    ///     if case .thinking(let thought) = event {
+    ///         return acc + thought
+    ///     }
+    ///     return acc
+    /// } {
+    ///     print("Thoughts so far: \(combined)")
+    /// }
+    /// ```
+    func scan<T: Sendable>(
+        _ initial: T,
+        _ combine: @escaping @Sendable (T, AgentEvent) async throws -> T
+    ) -> AsyncThrowingStream<T, Error> {
+        StreamHelper.makeTrackedStream { continuation in
+            var accumulator = initial
+
+            for try await event in self {
+                accumulator = try await combine(accumulator, event)
+                continuation.yield(accumulator)
+            }
+            continuation.finish()
+        }
+    }
 }
 
 // MARK: - MergeErrorStrategy
