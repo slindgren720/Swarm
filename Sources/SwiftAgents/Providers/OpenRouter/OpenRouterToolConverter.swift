@@ -281,15 +281,22 @@ public indirect enum OpenRouterPropertySchema: Sendable, Codable, Equatable {
 public enum OpenRouterToolCallParser: Sendable {
     /// Parses a JSON arguments string into a SendableValue dictionary.
     /// - Parameter jsonString: The JSON string to parse.
-    /// - Returns: The parsed arguments, or nil if parsing fails.
-    public static func parseArguments(_ jsonString: String) -> [String: SendableValue]? {
+    /// - Returns: The parsed arguments.
+    /// - Throws: `AgentError` if parsing fails.
+    public static func parseArguments(_ jsonString: String) throws -> [String: SendableValue] {
         guard let data = jsonString.data(using: .utf8) else {
-            return nil
+            throw AgentError.invalidToolArguments(
+                toolName: "unknown",
+                reason: "Failed to convert arguments to UTF-8"
+            )
         }
 
         do {
             guard let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
+                throw AgentError.invalidToolArguments(
+                    toolName: "unknown",
+                    reason: "Arguments must be a JSON object"
+                )
             }
 
             var result: [String: SendableValue] = [:]
@@ -297,18 +304,23 @@ public enum OpenRouterToolCallParser: Sendable {
                 result[key] = SendableValue.fromJSONValue(value)
             }
             return result
+        } catch let error as AgentError {
+            throw error
         } catch {
-            return nil
+            let errorType = String(describing: type(of: error))
+            throw AgentError.invalidToolArguments(
+                toolName: "unknown",
+                reason: "JSON parsing failed: \(errorType)"
+            )
         }
     }
 
     /// Converts an OpenRouter tool call to a ParsedToolCall.
     /// - Parameter toolCall: The OpenRouter tool call to convert.
-    /// - Returns: The parsed tool call, or nil if argument parsing fails.
-    public static func toParsedToolCall(_ toolCall: OpenRouterToolCall) -> InferenceResponse.ParsedToolCall? {
-        guard let arguments = parseArguments(toolCall.function.arguments) else {
-            return nil
-        }
+    /// - Returns: The parsed tool call.
+    /// - Throws: `AgentError` if argument parsing fails.
+    public static func toParsedToolCall(_ toolCall: OpenRouterToolCall) throws -> InferenceResponse.ParsedToolCall {
+        let arguments = try parseArguments(toolCall.function.arguments)
         return InferenceResponse.ParsedToolCall(
             id: toolCall.id,
             name: toolCall.function.name,
@@ -318,9 +330,10 @@ public enum OpenRouterToolCallParser: Sendable {
 
     /// Converts multiple OpenRouter tool calls to ParsedToolCalls.
     /// - Parameter toolCalls: The OpenRouter tool calls to convert.
-    /// - Returns: Successfully parsed tool calls (failed parses are filtered out).
-    public static func toParsedToolCalls(_ toolCalls: [OpenRouterToolCall]) -> [InferenceResponse.ParsedToolCall] {
-        toolCalls.compactMap { toParsedToolCall($0) }
+    /// - Returns: Successfully parsed tool calls.
+    /// - Throws: `AgentError` if any argument parsing fails.
+    public static func toParsedToolCalls(_ toolCalls: [OpenRouterToolCall]) throws -> [InferenceResponse.ParsedToolCall] {
+        try toolCalls.map { try toParsedToolCall($0) }
     }
 }
 
@@ -343,9 +356,11 @@ public extension SendableValue {
 
         case let double as Double:
             // Check if it's actually an integer stored as double
-            if double.truncatingRemainder(dividingBy: 1) == 0,
-               double >= Double(Int.min), double <= Double(Int.max) {
-                return .int(Int(double))
+            // Use JavaScript safe integer range to prevent overflow
+            if double >= -9007199254740992 && double <= 9007199254740992 {
+                if double.truncatingRemainder(dividingBy: 1) == 0 {
+                    return .int(Int(double))
+                }
             }
             return .double(double)
 
@@ -366,6 +381,90 @@ public extension SendableValue {
             // Attempt to convert to string as fallback
             return .string(String(describing: value))
         }
+    }
+}
+
+// MARK: - OpenRouterToolDefinition to OpenRouterTool Conversion
+
+extension OpenRouterToolDefinition {
+    /// Converts this tool definition to the simpler OpenRouterTool type for API requests.
+    public func toOpenRouterTool() -> OpenRouterTool {
+        // Convert OpenRouterJSONSchema to SendableValue
+        let paramsValue = function.parameters.toSendableValue()
+        return OpenRouterTool.function(
+            name: function.name,
+            description: function.description,
+            parameters: paramsValue
+        )
+    }
+}
+
+extension OpenRouterJSONSchema {
+    /// Converts the JSON schema to a SendableValue for API encoding.
+    func toSendableValue() -> SendableValue {
+        var dict: [String: SendableValue] = [
+            "type": .string("object")
+        ]
+
+        // Convert properties
+        var propsDict: [String: SendableValue] = [:]
+        for (name, prop) in properties {
+            propsDict[name] = prop.toSendableValue()
+        }
+        dict["properties"] = .dictionary(propsDict)
+
+        // Add required array
+        if !required.isEmpty {
+            dict["required"] = .array(required.map { .string($0) })
+        }
+
+        return .dictionary(dict)
+    }
+}
+
+extension OpenRouterPropertySchema {
+    /// Converts the property schema to a SendableValue.
+    func toSendableValue() -> SendableValue {
+        var dict: [String: SendableValue] = [:]
+
+        switch self {
+        case .string(let desc):
+            dict["type"] = .string("string")
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        case .integer(let desc):
+            dict["type"] = .string("integer")
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        case .number(let desc):
+            dict["type"] = .string("number")
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        case .boolean(let desc):
+            dict["type"] = .string("boolean")
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        case .array(let items, let desc):
+            dict["type"] = .string("array")
+            dict["items"] = items.toSendableValue()
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        case .object(let props, let req, let desc):
+            dict["type"] = .string("object")
+            var propsDict: [String: SendableValue] = [:]
+            for (name, prop) in props {
+                propsDict[name] = prop.toSendableValue()
+            }
+            dict["properties"] = .dictionary(propsDict)
+            if !req.isEmpty {
+                dict["required"] = .array(req.map { .string($0) })
+            }
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        case .enumeration(let values, let desc):
+            dict["type"] = .string("string")
+            dict["enum"] = .array(values.map { .string($0) })
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        case .any(let desc):
+            dict["type"] = .string("object")
+            if !desc.isEmpty { dict["description"] = .string(desc) }
+        }
+
+        return .dictionary(dict)
     }
 }
 
@@ -403,7 +502,7 @@ public extension Array where Element == any Tool {
 public extension Array where Element == ToolDefinition {
     /// Converts an array of tool definitions to OpenRouter tool definitions.
     /// - Returns: The array of OpenRouter tool definitions.
-    func toOpenRouterTools() -> [OpenRouterToolDefinition] {
+    func toOpenRouterToolDefinitions() -> [OpenRouterToolDefinition] {
         map { toolDef in
             var properties: [String: OpenRouterPropertySchema] = [:]
             var required: [String] = []
@@ -424,5 +523,11 @@ public extension Array where Element == ToolDefinition {
 
             return OpenRouterToolDefinition(function: function)
         }
+    }
+
+    /// Converts an array of tool definitions to OpenRouter tools for API requests.
+    /// - Returns: The array of OpenRouter tools ready for encoding.
+    func toOpenRouterTools() -> [OpenRouterTool] {
+        toOpenRouterToolDefinitions().map { $0.toOpenRouterTool() }
     }
 }

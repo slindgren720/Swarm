@@ -244,14 +244,20 @@ public struct OpenRouterStreamParser: Sendable {
         }
 
         // Check for data prefix
+        // Handle both "data: " (with space) and "data:" (without space) formats
         guard trimmedLine.hasPrefix("data:") else {
             // Not a data line, ignore
             return nil
         }
 
         // Extract the data payload
-        let dataStartIndex = trimmedLine.index(trimmedLine.startIndex, offsetBy: 5)
-        let data = trimmedLine[dataStartIndex...].trimmingCharacters(in: .whitespaces)
+        let dataPayload: String
+        if trimmedLine.hasPrefix("data: ") {
+            dataPayload = String(trimmedLine.dropFirst(6))
+        } else {
+            dataPayload = String(trimmedLine.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+        }
+        let data = dataPayload
 
         // Check for stream termination
         if data == "[DONE]" {
@@ -271,7 +277,8 @@ public struct OpenRouterStreamParser: Sendable {
             let chunk = try decoder.decode(OpenRouterStreamChunk.self, from: jsonData)
             return extractEvents(from: chunk)
         } catch {
-            return [.error(.decodingError(SendableErrorWrapper(description: "JSON decode failed: \(error.localizedDescription)")))]
+            let errorType = String(describing: type(of: error))
+            return [.error(.decodingError(SendableErrorWrapper(description: "JSON decode failed: \(errorType)")))]
         }
     }
 
@@ -310,7 +317,8 @@ public struct OpenRouterStreamParser: Sendable {
                 }
 
                 // Extract legacy function call (if present)
-                if let functionCall = choice.delta?.function_call {
+                // Only process legacy function_call if no modern tool_calls exist
+                if choice.delta?.tool_calls == nil, let functionCall = choice.delta?.function_call {
                     events.append(.toolCallDelta(
                         index: 0,
                         id: nil,
@@ -373,6 +381,8 @@ public struct OpenRouterStreamParser: Sendable {
 /// This accumulator collects these fragments by index and reconstructs the
 /// complete tool calls once all fragments have been received.
 ///
+/// - Important: This type is NOT thread-safe. Use only from a single isolation context.
+///
 /// Example usage:
 /// ```swift
 /// var accumulator = OpenRouterToolCallAccumulator()
@@ -388,7 +398,7 @@ public struct OpenRouterStreamParser: Sendable {
 ///     print("Tool: \(call.name), Args: \(call.arguments)")
 /// }
 /// ```
-public struct OpenRouterToolCallAccumulator: Sendable {
+public struct OpenRouterToolCallAccumulator {
 
     /// Represents a completed tool call.
     public struct CompletedToolCall: Sendable, Equatable {
@@ -470,10 +480,20 @@ public struct OpenRouterToolCallAccumulator: Sendable {
     public func getCompletedToolCalls() -> [CompletedToolCall] {
         toolCalls
             .sorted { $0.key < $1.key }
-            .compactMap { _, call -> CompletedToolCall? in
+            .compactMap { index, call -> CompletedToolCall? in
+                // Incomplete tool calls (missing ID or name) are filtered out
+                if call.id == nil {
+                    return nil
+                }
+
+                if call.name == nil {
+                    return nil
+                }
+
                 guard let id = call.id, let name = call.name else {
                     return nil
                 }
+
                 return CompletedToolCall(
                     id: id,
                     name: name,

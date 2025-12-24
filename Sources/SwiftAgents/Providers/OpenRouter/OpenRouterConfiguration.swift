@@ -5,6 +5,45 @@
 
 import Foundation
 
+// MARK: - OpenRouterConfigurationError
+
+/// Errors that can occur during OpenRouter configuration.
+public enum OpenRouterConfigurationError: Error, Sendable, LocalizedError {
+    /// The API key is empty or contains only whitespace.
+    case emptyAPIKey
+    /// The model identifier is empty or contains only whitespace.
+    case emptyModelIdentifier
+    /// The maxTokens value is not positive.
+    case invalidMaxTokens(Int)
+    /// The temperature value is outside the valid range (0.0-2.0).
+    case invalidTemperature(Double)
+    /// The topP value is outside the valid range (0.0-1.0).
+    case invalidTopP(Double)
+    /// The topK value is not positive.
+    case invalidTopK(Int)
+    /// Both allowList and denyList are specified with non-empty values.
+    case conflictingProviderPreferences
+
+    public var errorDescription: String? {
+        switch self {
+        case .emptyAPIKey:
+            return "OpenRouterConfiguration: apiKey cannot be empty"
+        case .emptyModelIdentifier:
+            return "OpenRouterModel: identifier cannot be empty"
+        case .invalidMaxTokens(let value):
+            return "OpenRouterConfiguration: maxTokens must be positive, got \(value)"
+        case .invalidTemperature(let value):
+            return "OpenRouterConfiguration: temperature must be 0.0-2.0, got \(value)"
+        case .invalidTopP(let value):
+            return "OpenRouterConfiguration: topP must be 0.0-1.0, got \(value)"
+        case .invalidTopK(let value):
+            return "OpenRouterConfiguration: topK must be positive, got \(value)"
+        case .conflictingProviderPreferences:
+            return "OpenRouterProviderPreferences: cannot specify both non-empty allowList and denyList"
+        }
+    }
+}
+
 // MARK: - OpenRouterModel
 
 /// A model identifier for OpenRouter.
@@ -27,13 +66,21 @@ public struct OpenRouterModel: Sendable, Hashable, ExpressibleByStringLiteral {
 
     /// Creates a model from a string identifier.
     /// - Parameter identifier: The OpenRouter model identifier.
-    public init(_ identifier: String) {
-        self.identifier = identifier
+    /// - Throws: `OpenRouterConfigurationError.emptyModelIdentifier` if the identifier is empty.
+    public init(_ identifier: String) throws {
+        let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw OpenRouterConfigurationError.emptyModelIdentifier
+        }
+        self.identifier = trimmed
     }
 
     /// Creates a model from a string literal.
     public init(stringLiteral value: StringLiteralType) {
-        self.identifier = value
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        // String literals are compile-time constants, so this is safe
+        precondition(!trimmed.isEmpty, "OpenRouterModel: string literal identifier cannot be empty")
+        self.identifier = trimmed
     }
 
     // MARK: - Static Presets
@@ -161,7 +208,10 @@ public struct OpenRouterRetryStrategy: Sendable, Equatable {
     /// - Parameter attempt: The retry attempt number (1-indexed).
     /// - Returns: The delay in seconds before the next retry.
     public func delay(forAttempt attempt: Int) -> TimeInterval {
-        let exponentialDelay = baseDelay * pow(backoffMultiplier, Double(attempt - 1))
+        guard attempt > 0 else { return baseDelay }
+        let exponent = Double(min(attempt - 1, 62)) // Prevent overflow for very high attempt counts
+        let exponentialDelay = baseDelay * pow(backoffMultiplier, exponent)
+        guard exponentialDelay.isFinite else { return maxDelay }
         return min(exponentialDelay, maxDelay)
     }
 }
@@ -241,6 +291,7 @@ public struct OpenRouterProviderPreferences: Sendable, Equatable, Codable {
     ///   - allowFallbacks: Whether to allow fallback providers.
     ///   - sort: Sorting preference for provider selection.
     ///   - maxPrice: Maximum price per token in USD.
+    /// - Throws: `OpenRouterConfigurationError.conflictingProviderPreferences` if both allowList and denyList are non-empty.
     public init(
         order: [String]? = nil,
         allowList: [String]? = nil,
@@ -249,7 +300,12 @@ public struct OpenRouterProviderPreferences: Sendable, Equatable, Codable {
         allowFallbacks: Bool? = nil,
         sort: SortPreference? = nil,
         maxPrice: Double? = nil
-    ) {
+    ) throws {
+        // Validate conflicting lists
+        if let allow = allowList, let deny = denyList, !allow.isEmpty, !deny.isEmpty {
+            throw OpenRouterConfigurationError.conflictingProviderPreferences
+        }
+
         self.order = order
         self.allowList = allowList
         self.denyList = denyList
@@ -344,6 +400,7 @@ public struct OpenRouterConfiguration: Sendable {
     // MARK: - Default Values
 
     /// Default base URL for OpenRouter API.
+    // swiftlint:disable:next force_unwrapping
     public static let defaultBaseURL = URL(string: "https://openrouter.ai/api/v1")!
 
     /// Default timeout duration.
@@ -371,6 +428,7 @@ public struct OpenRouterConfiguration: Sendable {
     ///   - fallbackModels: Fallback models on failure.
     ///   - routingStrategy: Routing strategy for fallbacks. Default: .fallback
     ///   - retryStrategy: Retry strategy. Default: .default
+    /// - Throws: `OpenRouterConfigurationError` if any validation fails.
     public init(
         apiKey: String,
         model: OpenRouterModel,
@@ -387,8 +445,40 @@ public struct OpenRouterConfiguration: Sendable {
         fallbackModels: [OpenRouterModel] = [],
         routingStrategy: OpenRouterRoutingStrategy = .fallback,
         retryStrategy: OpenRouterRetryStrategy = .default
-    ) {
-        self.apiKey = apiKey
+    ) throws {
+        // Validate API key
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            throw OpenRouterConfigurationError.emptyAPIKey
+        }
+
+        // Validate maxTokens
+        guard maxTokens > 0 else {
+            throw OpenRouterConfigurationError.invalidMaxTokens(maxTokens)
+        }
+
+        // Validate temperature if provided
+        if let temp = temperature {
+            guard temp >= 0.0 && temp <= 2.0 else {
+                throw OpenRouterConfigurationError.invalidTemperature(temp)
+            }
+        }
+
+        // Validate topP if provided
+        if let top = topP {
+            guard top > 0.0 && top <= 1.0 else {
+                throw OpenRouterConfigurationError.invalidTopP(top)
+            }
+        }
+
+        // Validate topK if provided
+        if let k = topK {
+            guard k > 0 else {
+                throw OpenRouterConfigurationError.invalidTopK(k)
+            }
+        }
+
+        self.apiKey = trimmedKey
         self.model = model
         self.baseURL = baseURL
         self.timeout = timeout
@@ -418,135 +508,412 @@ public struct OpenRouterConfiguration: Sendable {
     ///     .maxTokens(8192)
     ///     .build()
     /// ```
-    public final class Builder: @unchecked Sendable {
-        private var _apiKey: String = ""
-        private var _model: OpenRouterModel = .gpt4o
-        private var _baseURL: URL = OpenRouterConfiguration.defaultBaseURL
-        private var _timeout: Duration = OpenRouterConfiguration.defaultTimeout
-        private var _maxTokens: Int = OpenRouterConfiguration.defaultMaxTokens
-        private var _systemPrompt: String?
-        private var _temperature: Double?
-        private var _topP: Double?
-        private var _topK: Int?
-        private var _appName: String?
-        private var _siteURL: URL?
-        private var _providerPreferences: OpenRouterProviderPreferences?
-        private var _fallbackModels: [OpenRouterModel] = []
-        private var _routingStrategy: OpenRouterRoutingStrategy = .fallback
-        private var _retryStrategy: OpenRouterRetryStrategy = .default
+    public struct Builder: Sendable {
+        private let _apiKey: String
+        private let _model: OpenRouterModel
+        private let _baseURL: URL
+        private let _timeout: Duration
+        private let _maxTokens: Int
+        private let _systemPrompt: String?
+        private let _temperature: Double?
+        private let _topP: Double?
+        private let _topK: Int?
+        private let _appName: String?
+        private let _siteURL: URL?
+        private let _providerPreferences: OpenRouterProviderPreferences?
+        private let _fallbackModels: [OpenRouterModel]
+        private let _routingStrategy: OpenRouterRoutingStrategy
+        private let _retryStrategy: OpenRouterRetryStrategy
 
-        /// Creates a new builder.
-        public init() {}
+        /// Private initializer for copy-on-write pattern.
+        private init(
+            apiKey: String,
+            model: OpenRouterModel,
+            baseURL: URL,
+            timeout: Duration,
+            maxTokens: Int,
+            systemPrompt: String?,
+            temperature: Double?,
+            topP: Double?,
+            topK: Int?,
+            appName: String?,
+            siteURL: URL?,
+            providerPreferences: OpenRouterProviderPreferences?,
+            fallbackModels: [OpenRouterModel],
+            routingStrategy: OpenRouterRoutingStrategy,
+            retryStrategy: OpenRouterRetryStrategy
+        ) {
+            self._apiKey = apiKey
+            self._model = model
+            self._baseURL = baseURL
+            self._timeout = timeout
+            self._maxTokens = maxTokens
+            self._systemPrompt = systemPrompt
+            self._temperature = temperature
+            self._topP = topP
+            self._topK = topK
+            self._appName = appName
+            self._siteURL = siteURL
+            self._providerPreferences = providerPreferences
+            self._fallbackModels = fallbackModels
+            self._routingStrategy = routingStrategy
+            self._retryStrategy = retryStrategy
+        }
+
+        /// Creates a new builder with default values.
+        public init() {
+            self._apiKey = ""
+            self._model = .gpt4o
+            self._baseURL = OpenRouterConfiguration.defaultBaseURL
+            self._timeout = OpenRouterConfiguration.defaultTimeout
+            self._maxTokens = OpenRouterConfiguration.defaultMaxTokens
+            self._systemPrompt = nil
+            self._temperature = nil
+            self._topP = nil
+            self._topK = nil
+            self._appName = nil
+            self._siteURL = nil
+            self._providerPreferences = nil
+            self._fallbackModels = []
+            self._routingStrategy = .fallback
+            self._retryStrategy = .default
+        }
 
         /// Sets the API key.
         @discardableResult
         public func apiKey(_ value: String) -> Builder {
-            _apiKey = value
-            return self
+            Builder(
+                apiKey: value,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the primary model.
         @discardableResult
         public func model(_ value: OpenRouterModel) -> Builder {
-            _model = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: value,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the base URL.
         @discardableResult
         public func baseURL(_ value: URL) -> Builder {
-            _baseURL = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: value,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the request timeout.
         @discardableResult
         public func timeout(_ value: Duration) -> Builder {
-            _timeout = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: value,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the maximum tokens.
         @discardableResult
         public func maxTokens(_ value: Int) -> Builder {
-            _maxTokens = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: value,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the system prompt.
         @discardableResult
         public func systemPrompt(_ value: String?) -> Builder {
-            _systemPrompt = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: value,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the temperature.
         @discardableResult
         public func temperature(_ value: Double?) -> Builder {
-            _temperature = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: value,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the top-p parameter.
         @discardableResult
         public func topP(_ value: Double?) -> Builder {
-            _topP = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: value,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the top-k parameter.
         @discardableResult
         public func topK(_ value: Int?) -> Builder {
-            _topK = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: value,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the application name.
         @discardableResult
         public func appName(_ value: String?) -> Builder {
-            _appName = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: value,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the site URL.
         @discardableResult
         public func siteURL(_ value: URL?) -> Builder {
-            _siteURL = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: value,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the provider preferences.
         @discardableResult
         public func providerPreferences(_ value: OpenRouterProviderPreferences?) -> Builder {
-            _providerPreferences = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: value,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the fallback models.
         @discardableResult
         public func fallbackModels(_ value: [OpenRouterModel]) -> Builder {
-            _fallbackModels = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: value,
+                routingStrategy: _routingStrategy,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the routing strategy.
         @discardableResult
         public func routingStrategy(_ value: OpenRouterRoutingStrategy) -> Builder {
-            _routingStrategy = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: value,
+                retryStrategy: _retryStrategy
+            )
         }
 
         /// Sets the retry strategy.
         @discardableResult
         public func retryStrategy(_ value: OpenRouterRetryStrategy) -> Builder {
-            _retryStrategy = value
-            return self
+            Builder(
+                apiKey: _apiKey,
+                model: _model,
+                baseURL: _baseURL,
+                timeout: _timeout,
+                maxTokens: _maxTokens,
+                systemPrompt: _systemPrompt,
+                temperature: _temperature,
+                topP: _topP,
+                topK: _topK,
+                appName: _appName,
+                siteURL: _siteURL,
+                providerPreferences: _providerPreferences,
+                fallbackModels: _fallbackModels,
+                routingStrategy: _routingStrategy,
+                retryStrategy: value
+            )
         }
 
         /// Builds the configuration.
         /// - Returns: A new OpenRouterConfiguration instance.
-        public func build() -> OpenRouterConfiguration {
-            OpenRouterConfiguration(
+        /// - Throws: `OpenRouterConfigurationError` if any validation fails.
+        public func build() throws -> OpenRouterConfiguration {
+            try OpenRouterConfiguration(
                 apiKey: _apiKey,
                 model: _model,
                 baseURL: _baseURL,

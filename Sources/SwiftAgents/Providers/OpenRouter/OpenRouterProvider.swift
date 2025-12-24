@@ -31,7 +31,7 @@ public actor OpenRouterProvider: InferenceProvider {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
-    private var rateLimitInfo: RateLimitInfo?
+    private var rateLimitInfo: OpenRouterRateLimitInfo?
 
     /// Cached model description for nonisolated access.
     private let modelDescription: String
@@ -58,8 +58,9 @@ public actor OpenRouterProvider: InferenceProvider {
     /// - Parameters:
     ///   - apiKey: The OpenRouter API key.
     ///   - model: The model to use. Default: .gpt4o
-    public init(apiKey: String, model: OpenRouterModel = .gpt4o) {
-        self.init(configuration: OpenRouterConfiguration(apiKey: apiKey, model: model))
+    /// - Throws: `OpenRouterConfigurationError` if configuration validation fails.
+    public init(apiKey: String, model: OpenRouterModel = .gpt4o) throws {
+        try self.init(configuration: OpenRouterConfiguration(apiKey: apiKey, model: model))
     }
 
     // MARK: - InferenceProvider Conformance
@@ -89,7 +90,7 @@ public actor OpenRouterProvider: InferenceProvider {
                 }
 
                 // Update rate limit info
-                rateLimitInfo = RateLimitInfo(headers: httpResponse.allHeaderFields)
+                rateLimitInfo = OpenRouterRateLimitInfo.parse(from: httpResponse.allHeaderFields)
 
                 // Handle HTTP errors
                 if httpResponse.statusCode != 200 {
@@ -98,7 +99,7 @@ public actor OpenRouterProvider: InferenceProvider {
                 }
 
                 // Parse response
-                let chatResponse = try decoder.decode(ChatCompletionResponse.self, from: data)
+                let chatResponse = try decoder.decode(OpenRouterResponse.self, from: data)
 
                 guard let content = chatResponse.choices.first?.message.content else {
                     throw AgentError.generationFailed(reason: "No content in response")
@@ -112,7 +113,8 @@ public actor OpenRouterProvider: InferenceProvider {
                 }
                 // Retry on retryable errors
                 if case .rateLimitExceeded = error {
-                    try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                    let delay = configuration.retryStrategy.delay(forAttempt: attempt + 1)
+                    try await Task.sleep(for: .seconds(delay))
                     continue
                 }
                 throw error
@@ -122,7 +124,8 @@ public actor OpenRouterProvider: InferenceProvider {
                 if attempt == maxRetries {
                     throw AgentError.generationFailed(reason: error.localizedDescription)
                 }
-                try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                let delay = configuration.retryStrategy.delay(forAttempt: attempt + 1)
+                try await Task.sleep(for: .seconds(delay))
             }
         }
 
@@ -136,12 +139,18 @@ public actor OpenRouterProvider: InferenceProvider {
     /// - Returns: An async stream of response tokens.
     public nonisolated func stream(prompt: String, options: InferenceOptions) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     try await self.performStream(prompt: prompt, options: options, continuation: continuation)
+                } catch is CancellationError {
+                    continuation.finish(throwing: AgentError.cancelled)
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
             }
         }
     }
@@ -176,7 +185,7 @@ public actor OpenRouterProvider: InferenceProvider {
                 }
 
                 // Update rate limit info
-                rateLimitInfo = RateLimitInfo(headers: httpResponse.allHeaderFields)
+                rateLimitInfo = OpenRouterRateLimitInfo.parse(from: httpResponse.allHeaderFields)
 
                 // Handle HTTP errors
                 if httpResponse.statusCode != 200 {
@@ -185,7 +194,7 @@ public actor OpenRouterProvider: InferenceProvider {
                 }
 
                 // Parse response
-                let chatResponse = try decoder.decode(ChatCompletionResponse.self, from: data)
+                let chatResponse = try decoder.decode(OpenRouterResponse.self, from: data)
 
                 guard let choice = chatResponse.choices.first else {
                     throw AgentError.generationFailed(reason: "No choices in response")
@@ -197,20 +206,20 @@ public actor OpenRouterProvider: InferenceProvider {
                 // Parse tool calls if present
                 var parsedToolCalls: [InferenceResponse.ParsedToolCall] = []
                 if let toolCalls = choice.message.toolCalls {
+                    // Validate all tool calls have required IDs
                     for toolCall in toolCalls {
-                        let arguments = try parseToolArguments(toolCall.function.arguments)
-                        parsedToolCalls.append(InferenceResponse.ParsedToolCall(
-                            id: toolCall.id,
-                            name: toolCall.function.name,
-                            arguments: arguments
-                        ))
+                        guard !toolCall.id.isEmpty else {
+                            throw AgentError.generationFailed(reason: "Tool call missing required ID")
+                        }
                     }
+                    // Use the public API to parse tool calls
+                    parsedToolCalls = try OpenRouterToolCallParser.toParsedToolCalls(toolCalls)
                 }
 
                 // Parse usage statistics
-                var usage: InferenceResponse.TokenUsage?
+                var usage: TokenUsage?
                 if let responseUsage = chatResponse.usage {
-                    usage = InferenceResponse.TokenUsage(
+                    usage = TokenUsage(
                         inputTokens: responseUsage.promptTokens,
                         outputTokens: responseUsage.completionTokens
                     )
@@ -228,7 +237,8 @@ public actor OpenRouterProvider: InferenceProvider {
                     throw error
                 }
                 if case .rateLimitExceeded = error {
-                    try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                    let delay = configuration.retryStrategy.delay(forAttempt: attempt + 1)
+                    try await Task.sleep(for: .seconds(delay))
                     continue
                 }
                 throw error
@@ -238,7 +248,8 @@ public actor OpenRouterProvider: InferenceProvider {
                 if attempt == maxRetries {
                     throw AgentError.generationFailed(reason: error.localizedDescription)
                 }
-                try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                let delay = configuration.retryStrategy.delay(forAttempt: attempt + 1)
+                try await Task.sleep(for: .seconds(delay))
             }
         }
 
@@ -270,11 +281,12 @@ public actor OpenRouterProvider: InferenceProvider {
                 }
 
                 // Update rate limit info
-                rateLimitInfo = RateLimitInfo(headers: httpResponse.allHeaderFields)
+                rateLimitInfo = OpenRouterRateLimitInfo.parse(from: httpResponse.allHeaderFields)
 
                 // Handle HTTP errors by collecting error data
                 if httpResponse.statusCode != 200 {
                     var errorData = Data()
+                    errorData.reserveCapacity(10000)  // Pre-allocate buffer to avoid reallocations
                     for try await byte in bytes {
                         errorData.append(byte)
                         if errorData.count >= 10000 { break }
@@ -298,8 +310,8 @@ public actor OpenRouterProvider: InferenceProvider {
                     guard let jsonData = jsonString.data(using: .utf8) else { continue }
 
                     do {
-                        let chunk = try decoder.decode(StreamChunk.self, from: jsonData)
-                        if let content = chunk.choices.first?.delta.content {
+                        let chunk = try decoder.decode(OpenRouterStreamChunk.self, from: jsonData)
+                        if let content = chunk.choices?.first?.delta?.content {
                             continuation.yield(content)
                         }
                     } catch {
@@ -316,7 +328,8 @@ public actor OpenRouterProvider: InferenceProvider {
                     throw error
                 }
                 if case .rateLimitExceeded = error {
-                    try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                    let delay = configuration.retryStrategy.delay(forAttempt: attempt + 1)
+                    try await Task.sleep(for: .seconds(delay))
                     continue
                 }
                 throw error
@@ -326,7 +339,8 @@ public actor OpenRouterProvider: InferenceProvider {
                 if attempt == maxRetries {
                     throw AgentError.generationFailed(reason: error.localizedDescription)
                 }
-                try await Task.sleep(for: .seconds(pow(2.0, Double(attempt))))
+                let delay = configuration.retryStrategy.delay(forAttempt: attempt + 1)
+                try await Task.sleep(for: .seconds(delay))
             }
         }
 
@@ -353,88 +367,36 @@ public actor OpenRouterProvider: InferenceProvider {
             request.setValue(appName, forHTTPHeaderField: "X-Title")
         }
 
-        var body: [String: Any] = [
-            "model": configuration.model.identifier,
-            "messages": [
-                ["role": "user", "content": prompt]
-            ],
-            "stream": stream,
-            "temperature": options.temperature
-        ]
-
-        if let maxTokens = options.maxTokens {
-            body["max_tokens"] = maxTokens
+        // Build messages array with typed OpenRouterMessage
+        var messages: [OpenRouterMessage] = []
+        if let systemPrompt = configuration.systemPrompt, !systemPrompt.isEmpty {
+            messages.append(.system(systemPrompt))
         }
+        messages.append(.user(prompt))
 
-        if !options.stopSequences.isEmpty {
-            body["stop"] = options.stopSequences
-        }
+        // Build typed request
+        let openRouterRequest = OpenRouterRequest(
+            model: configuration.model.identifier,
+            messages: messages,
+            stream: stream,
+            temperature: options.temperature,
+            topP: options.topP,
+            topK: options.topK ?? configuration.topK,
+            frequencyPenalty: options.frequencyPenalty,
+            presencePenalty: options.presencePenalty,
+            maxTokens: options.maxTokens,
+            stop: options.stopSequences.isEmpty ? nil : options.stopSequences,
+            tools: tools?.toOpenRouterTools()
+        )
 
-        if let topP = options.topP {
-            body["top_p"] = topP
-        }
-
-        if let presencePenalty = options.presencePenalty {
-            body["presence_penalty"] = presencePenalty
-        }
-
-        if let frequencyPenalty = options.frequencyPenalty {
-            body["frequency_penalty"] = frequencyPenalty
-        }
-
-        // Add tools if provided
-        if let tools = tools, !tools.isEmpty {
-            body["tools"] = tools.map { convertToolDefinition($0) }
-        }
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        // Encode the typed request
+        request.httpBody = try encoder.encode(openRouterRequest)
         return request
-    }
-
-    private func convertToolDefinition(_ tool: ToolDefinition) -> [String: Any] {
-        var properties: [String: Any] = [:]
-        var required: [String] = []
-
-        for param in tool.parameters {
-            properties[param.name] = [
-                "type": convertParameterType(param.type),
-                "description": param.description
-            ]
-            if param.isRequired {
-                required.append(param.name)
-            }
-        }
-
-        return [
-            "type": "function",
-            "function": [
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": [
-                    "type": "object",
-                    "properties": properties,
-                    "required": required
-                ]
-            ]
-        ]
-    }
-
-    private func convertParameterType(_ type: ToolParameter.ParameterType) -> String {
-        switch type {
-        case .string: "string"
-        case .int: "integer"
-        case .double: "number"
-        case .bool: "boolean"
-        case .array: "array"
-        case .object: "object"
-        case .oneOf: "string"
-        case .any: "string"
-        }
     }
 
     private func handleHTTPError(statusCode: Int, data: Data, attempt: Int, maxRetries: Int) throws {
         let errorMessage: String
-        if let errorResponse = try? decoder.decode(ErrorResponse.self, from: data) {
+        if let errorResponse = try? decoder.decode(OpenRouterErrorResponse.self, from: data) {
             errorMessage = errorResponse.error.message
         } else if let rawMessage = String(data: data, encoding: .utf8) {
             errorMessage = rawMessage
@@ -446,18 +408,20 @@ public actor OpenRouterProvider: InferenceProvider {
         case 401:
             throw AgentError.inferenceProviderUnavailable(reason: "Invalid API key")
         case 429:
-            let retryAfter: TimeInterval? = pow(2.0, Double(attempt + 1))
+            let retryAfter = configuration.retryStrategy.delay(forAttempt: attempt + 1)
             throw AgentError.rateLimitExceeded(retryAfter: retryAfter)
         case 400:
             throw AgentError.invalidInput(reason: errorMessage)
         case 404:
             throw AgentError.modelNotAvailable(model: configuration.model.identifier)
-        case 500, 502, 503:
-            if attempt < maxRetries {
+        default:
+            // Use configured retryable status codes
+            if configuration.retryStrategy.retryableStatusCodes.contains(statusCode) && attempt < maxRetries {
                 return // Will retry
             }
-            throw AgentError.inferenceProviderUnavailable(reason: "Server error: \(errorMessage)")
-        default:
+            if statusCode >= 500 && statusCode < 600 {
+                throw AgentError.inferenceProviderUnavailable(reason: "Server error: \(errorMessage)")
+            }
             throw AgentError.generationFailed(reason: "HTTP \(statusCode): \(errorMessage)")
         }
     }
@@ -471,51 +435,6 @@ public actor OpenRouterProvider: InferenceProvider {
         default: .completed
         }
     }
-
-    private func parseToolArguments(_ argumentsString: String) throws -> [String: SendableValue] {
-        guard let data = argumentsString.data(using: .utf8) else {
-            throw AgentError.invalidToolArguments(toolName: "unknown", reason: "Invalid argument encoding")
-        }
-
-        guard let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw AgentError.invalidToolArguments(toolName: "unknown", reason: "Arguments must be an object")
-        }
-
-        return try convertToSendableValue(jsonObject)
-    }
-
-    private func convertToSendableValue(_ dict: [String: Any]) throws -> [String: SendableValue] {
-        var result: [String: SendableValue] = [:]
-        for (key, value) in dict {
-            result[key] = try convertAnyToSendableValue(value)
-        }
-        return result
-    }
-
-    private func convertAnyToSendableValue(_ value: Any) throws -> SendableValue {
-        switch value {
-        case is NSNull:
-            return .null
-        case let bool as Bool:
-            return .bool(bool)
-        case let int as Int:
-            return .int(int)
-        case let double as Double:
-            if double.truncatingRemainder(dividingBy: 1) == 0,
-               double >= Double(Int.min), double <= Double(Int.max) {
-                return .int(Int(double))
-            }
-            return .double(double)
-        case let string as String:
-            return .string(string)
-        case let array as [Any]:
-            return .array(try array.map { try convertAnyToSendableValue($0) })
-        case let dict as [String: Any]:
-            return .dictionary(try convertToSendableValue(dict))
-        default:
-            throw AgentError.invalidToolArguments(toolName: "unknown", reason: "Unsupported type: \(type(of: value))")
-        }
-    }
 }
 
 // MARK: - CustomStringConvertible
@@ -523,129 +442,5 @@ public actor OpenRouterProvider: InferenceProvider {
 extension OpenRouterProvider: CustomStringConvertible {
     public nonisolated var description: String {
         "OpenRouterProvider(model: \(modelDescription))"
-    }
-}
-
-// MARK: - Rate Limit Info
-
-/// Internal rate limit information from OpenRouter API responses.
-private struct RateLimitInfo: Sendable {
-    /// Requests remaining in the current window.
-    let requestsRemaining: Int?
-
-    /// Tokens remaining in the current window.
-    let tokensRemaining: Int?
-
-    /// When the rate limit window resets.
-    let resetTime: Date?
-
-    /// Creates rate limit info from response headers.
-    /// - Parameter headers: HTTP response headers.
-    init(headers: [AnyHashable: Any]) {
-        if let remaining = headers["x-ratelimit-remaining-requests"] as? String {
-            requestsRemaining = Int(remaining)
-        } else {
-            requestsRemaining = nil
-        }
-
-        if let tokens = headers["x-ratelimit-remaining-tokens"] as? String {
-            tokensRemaining = Int(tokens)
-        } else {
-            tokensRemaining = nil
-        }
-
-        if let reset = headers["x-ratelimit-reset-requests"] as? String,
-           let resetInterval = TimeInterval(reset) {
-            resetTime = Date().addingTimeInterval(resetInterval)
-        } else {
-            resetTime = nil
-        }
-    }
-}
-
-// MARK: - Response Types
-
-private struct ChatCompletionResponse: Decodable {
-    let id: String
-    let choices: [Choice]
-    let usage: Usage?
-
-    struct Choice: Decodable {
-        let index: Int
-        let message: Message
-        let finishReason: String?
-
-        enum CodingKeys: String, CodingKey {
-            case index
-            case message
-            case finishReason = "finish_reason"
-        }
-    }
-
-    struct Message: Decodable {
-        let role: String
-        let content: String?
-        let toolCalls: [ToolCall]?
-
-        enum CodingKeys: String, CodingKey {
-            case role
-            case content
-            case toolCalls = "tool_calls"
-        }
-    }
-
-    struct ToolCall: Decodable {
-        let id: String
-        let type: String
-        let function: FunctionCall
-    }
-
-    struct FunctionCall: Decodable {
-        let name: String
-        let arguments: String
-    }
-
-    struct Usage: Decodable {
-        let promptTokens: Int
-        let completionTokens: Int
-        let totalTokens: Int
-
-        enum CodingKeys: String, CodingKey {
-            case promptTokens = "prompt_tokens"
-            case completionTokens = "completion_tokens"
-            case totalTokens = "total_tokens"
-        }
-    }
-}
-
-private struct StreamChunk: Decodable {
-    let id: String?
-    let choices: [StreamChoice]
-
-    struct StreamChoice: Decodable {
-        let index: Int
-        let delta: Delta
-        let finishReason: String?
-
-        enum CodingKeys: String, CodingKey {
-            case index
-            case delta
-            case finishReason = "finish_reason"
-        }
-    }
-
-    struct Delta: Decodable {
-        let role: String?
-        let content: String?
-    }
-}
-
-private struct ErrorResponse: Decodable {
-    let error: ErrorDetail
-
-    struct ErrorDetail: Decodable {
-        let message: String
-        let type: String?
-        let code: String?
     }
 }

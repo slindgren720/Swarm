@@ -220,8 +220,13 @@ extension OpenRouterProviderError {
     /// - Parameters:
     ///   - statusCode: The HTTP status code.
     ///   - body: The response body data, if available.
+    ///   - headers: The HTTP response headers, if available.
     /// - Returns: The corresponding OpenRouterProviderError.
-    public static func fromHTTPStatus(_ statusCode: Int, body: Data?) -> OpenRouterProviderError {
+    public static func fromHTTPStatus(
+        _ statusCode: Int,
+        body: Data?,
+        headers: [AnyHashable: Any]? = nil
+    ) -> OpenRouterProviderError {
         // Try to parse error details from body
         var errorCode = "unknown"
         var errorMessage = "An error occurred"
@@ -265,7 +270,23 @@ extension OpenRouterProviderError {
         case 429:
             // Rate limited - try to extract retry-after
             var retryAfter: TimeInterval? = nil
-            if let body, let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+
+            // First check HTTP headers (standard Retry-After header)
+            if let headers = headers {
+                for (key, value) in headers {
+                    if let keyStr = key as? String,
+                       keyStr.lowercased() == "retry-after",
+                       let valueStr = value as? String,
+                       let seconds = TimeInterval(valueStr) {
+                        retryAfter = seconds
+                        break
+                    }
+                }
+            }
+
+            // Fall back to JSON body
+            if retryAfter == nil, let body,
+               let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
                 if let retry = json["retry_after"] as? TimeInterval {
                     retryAfter = retry
                 } else if let retry = json["retry_after"] as? Int {
@@ -274,8 +295,19 @@ extension OpenRouterProviderError {
             }
             return .rateLimitExceeded(retryAfter: retryAfter)
 
-        case 500...599:
-            // Server errors
+        case 408:
+            return .timeout(duration: .seconds(60))
+
+        case 502:
+            return .providerUnavailable(providers: ["upstream_provider"])
+
+        case 503:
+            return .providerUnavailable(providers: [])
+
+        case 504:
+            return .timeout(duration: .seconds(60))
+
+        case 500, 505...599:
             if errorMessage.lowercased().contains("provider") {
                 return .providerUnavailable(providers: ["unknown"])
             }

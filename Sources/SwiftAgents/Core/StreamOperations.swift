@@ -539,30 +539,39 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
 
     // MARK: - Retry
 
-    /// Retries the upstream stream on error with optional delay between attempts.
+    /// Retries stream creation on failure with optional delay between attempts.
     ///
-    /// When the upstream stream throws an error, this operator will restart
-    /// the stream from the beginning, up to the specified maximum attempts.
+    /// This operator accepts a factory closure that creates fresh streams for each retry attempt.
+    /// When a stream throws an error, the factory is called again to create a new stream,
+    /// up to the specified maximum attempts.
     ///
     /// - Parameters:
     ///   - maxAttempts: Maximum number of attempts (including the initial attempt). Default: 3
     ///   - delay: Duration to wait between retry attempts. Default: zero
-    /// - Returns: A stream that retries on failure.
+    ///   - factory: Closure that creates a new stream for each attempt
+    /// - Returns: A stream from the first successful attempt.
     ///
     /// Example:
     /// ```swift
-    /// // Retry up to 3 times with 1 second delay between attempts
-    /// for try await event in stream.retry(maxAttempts: 3, delay: .seconds(1)) {
+    /// // Retry agent execution up to 3 times with 1 second delay
+    /// let stream = AsyncThrowingStream<AgentEvent, Error>.retry(
+    ///     maxAttempts: 3,
+    ///     delay: .seconds(1)
+    /// ) {
+    ///     await agent.stream(input: "query")
+    /// }
+    ///
+    /// for try await event in stream {
     ///     print(event)
     /// }
     /// ```
     ///
-    /// - Note: This operator cannot restart the original stream; it only works
-    ///   when the stream source can be recreated. For agent streams, consider
-    ///   using `ResilientAgent` which provides more sophisticated retry logic.
-    func retry(
+    /// - Note: The factory closure is called once per attempt, allowing proper stream recreation.
+    ///   For simple retry logic, consider using `ResilientAgent` instead.
+    static func retry(
         maxAttempts: Int = 3,
-        delay: Duration = .zero
+        delay: Duration = .zero,
+        factory: @escaping @Sendable () async -> AsyncThrowingStream<AgentEvent, Error>
     ) -> AsyncThrowingStream<AgentEvent, Error> {
         let (stream, continuation): (AsyncThrowingStream<AgentEvent, Error>, AsyncThrowingStream<AgentEvent, Error>.Continuation) = StreamHelper.makeStream()
 
@@ -573,7 +582,8 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
             while attempts < maxAttempts {
                 attempts += 1
                 do {
-                    for try await event in self {
+                    let newStream = await factory()
+                    for try await event in newStream {
                         continuation.yield(event)
                     }
                     // Stream completed successfully
@@ -582,7 +592,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
                 } catch {
                     lastError = error
                     if attempts < maxAttempts, delay != .zero {
-                        try await Task.sleep(for: delay)
+                        try? await Task.sleep(for: delay)
                     }
                 }
             }
@@ -595,7 +605,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
             }
         }
 
-        continuation.onTermination = { @Sendable _ in
+        continuation.onTermination = { @Sendable (_: AsyncThrowingStream<AgentEvent, Error>.Continuation.Termination) in
             task.cancel()
         }
 
