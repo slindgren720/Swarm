@@ -12,3 +12,8 @@ DerivedData/
 *.profraw
 .build/coverage/
 coverage/
+
+# Claude Code configuration
+.claude/
+.mcp.json
+.agent_context.md
