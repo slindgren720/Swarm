@@ -44,11 +44,11 @@ struct MockAgent: Agent {
         self.mockResult = mockResult
     }
     
-    func run(_ input: String) async throws -> AgentResult {
+    func run(_ input: String, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
         mockResult
     }
-    
-    nonisolated func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error> {
+
+    nonisolated func stream(_ input: String, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield(.started(input: input))
             continuation.finish()

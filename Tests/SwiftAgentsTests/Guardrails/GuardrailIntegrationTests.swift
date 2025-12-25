@@ -35,12 +35,12 @@ fileprivate actor MockGuardrailAgent: Agent {
         self.responseHandler = responseHandler
     }
     
-    func run(_ input: String) async throws -> AgentResult {
+    func run(_ input: String, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
         let output = try await responseHandler(input)
         return AgentResult(output: output)
     }
-    
-    nonisolated func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error> {
+
+    nonisolated func stream(_ input: String, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { continuation in
             continuation.finish()
         }
