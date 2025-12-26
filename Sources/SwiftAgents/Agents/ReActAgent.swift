@@ -134,7 +134,7 @@ public actor ReActAgent: Agent {
             _ = resultBuilder.setOutput(output)
 
             // Run output guardrails BEFORE storing in memory/session
-            try await runner.runOutputGuardrails(outputGuardrails, output: output, agent: self, context: nil)
+            _ = try await runner.runOutputGuardrails(outputGuardrails, output: output, agent: self, context: nil)
 
             // Store turn in session (user + assistant messages)
             if let session {
