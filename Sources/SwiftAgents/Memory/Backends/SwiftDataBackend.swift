@@ -97,11 +97,34 @@
         }
 
         public func storeAll(_ messages: [MemoryMessage], conversationId: String) async throws {
-            for message in messages {
-                let persisted = PersistedMessage(from: message, conversationId: conversationId)
-                modelContext.insert(persisted)
+            guard !messages.isEmpty else { return }
+
+            // For small batches (<=100), use single transaction for efficiency
+            if messages.count <= 100 {
+                for message in messages {
+                    let persisted = PersistedMessage(from: message, conversationId: conversationId)
+                    modelContext.insert(persisted)
+                }
+                try modelContext.save()
+            } else {
+                // For large batches, save in chunks to manage memory pressure
+                let batchSize = 100
+                var startIndex = messages.startIndex
+
+                while startIndex < messages.endIndex {
+                    let endIndex = messages.index(startIndex, offsetBy: batchSize, limitedBy: messages.endIndex) ?? messages.endIndex
+                    let chunk = messages[startIndex..<endIndex]
+
+                    for message in chunk {
+                        let persisted = PersistedMessage(from: message, conversationId: conversationId)
+                        modelContext.insert(persisted)
+                    }
+                    try modelContext.save()
+
+                    startIndex = endIndex
+                }
             }
-            try modelContext.save()
+
             Log.memory.debug("Stored \(messages.count) messages for conversation: \(conversationId)")
         }
 
@@ -124,6 +147,30 @@
             }
             try modelContext.save()
             Log.memory.debug("Deleted \(deleteCount) oldest messages for conversation: \(conversationId)")
+        }
+
+        public func deleteLastMessage(conversationId: String) async throws -> MemoryMessage? {
+            // O(1) optimized implementation: fetch only the last message with fetchLimit: 1
+            var descriptor = FetchDescriptor<PersistedMessage>(
+                predicate: #Predicate { $0.conversationId == conversationId },
+                sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+            )
+            descriptor.fetchLimit = 1
+
+            let messages = try modelContext.fetch(descriptor)
+            guard let lastPersisted = messages.first else {
+                return nil
+            }
+
+            // Convert to MemoryMessage before deletion
+            let memoryMessage = lastPersisted.toMemoryMessage()
+
+            // Delete just this one message
+            modelContext.delete(lastPersisted)
+            try modelContext.save()
+
+            Log.memory.debug("Deleted last message for conversation: \(conversationId)")
+            return memoryMessage
         }
 
         // MARK: Private

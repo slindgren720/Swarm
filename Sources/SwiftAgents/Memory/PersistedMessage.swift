@@ -5,6 +5,7 @@
 
 #if canImport(SwiftData)
     import Foundation
+    import Logging
     import SwiftData
 
     /// SwiftData model for persistent message storage.
@@ -95,18 +96,30 @@
         ///
         /// - Returns: The equivalent MemoryMessage, or nil if conversion fails.
         public func toMemoryMessage() -> MemoryMessage? {
-            guard let role = MemoryMessage.Role(rawValue: role) else { return nil }
+            guard let messageRole = MemoryMessage.Role(rawValue: role) else {
+                Log.memory.warning(
+                    "Failed to deserialize PersistedMessage: invalid role '\(self.role)' for message id: \(id)"
+                )
+                return nil
+            }
 
-            let metadata: [String: String] = if let data = metadataJSON.data(using: .utf8),
-                                                let decoded = try? JSONDecoder().decode([String: String].self, from: data) {
-                decoded
+            let metadata: [String: String]
+            if let data = metadataJSON.data(using: .utf8),
+               let decoded = try? JSONDecoder().decode([String: String].self, from: data)
+            {
+                metadata = decoded
             } else {
-                [:]
+                if !metadataJSON.isEmpty, metadataJSON != "{}" {
+                    Log.memory.warning(
+                        "Failed to deserialize metadata for message \(id), using empty metadata. JSON: \(metadataJSON.prefix(100))"
+                    )
+                }
+                metadata = [:]
             }
 
             return MemoryMessage(
                 id: id,
-                role: role,
+                role: messageRole,
                 content: content,
                 timestamp: timestamp,
                 metadata: metadata

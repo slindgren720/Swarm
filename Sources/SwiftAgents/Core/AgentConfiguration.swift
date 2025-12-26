@@ -74,6 +74,16 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// Default: true
     public var includeReasoning: Bool
 
+    // MARK: - Session Settings
+
+    /// Maximum number of session history messages to load on each agent run.
+    ///
+    /// When a session is provided to an agent, this controls how many recent
+    /// messages are loaded as context. Set to `nil` to load all messages.
+    ///
+    /// Default: 50
+    public var sessionHistoryLimit: Int?
+
     // MARK: - Initialization
 
     /// Creates a new agent configuration.
@@ -88,6 +98,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - includeToolCallDetails: Include tool details in results. Default: true
     ///   - stopOnToolError: Stop on first tool error. Default: false
     ///   - includeReasoning: Include reasoning in events. Default: true
+    ///   - sessionHistoryLimit: Maximum session history messages to load. Default: 50
     public init(
         name: String = "Agent",
         maxIterations: Int = 10,
@@ -98,7 +109,8 @@ public struct AgentConfiguration: Sendable, Equatable {
         enableStreaming: Bool = true,
         includeToolCallDetails: Bool = true,
         stopOnToolError: Bool = false,
-        includeReasoning: Bool = true
+        includeReasoning: Bool = true,
+        sessionHistoryLimit: Int? = 50
     ) {
         self.name = name
         self.maxIterations = maxIterations
@@ -110,6 +122,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.includeToolCallDetails = includeToolCallDetails
         self.stopOnToolError = stopOnToolError
         self.includeReasoning = includeReasoning
+        self.sessionHistoryLimit = sessionHistoryLimit
     }
 }
 
@@ -128,7 +141,8 @@ extension AgentConfiguration: CustomStringConvertible {
             enableStreaming: \(enableStreaming),
             includeToolCallDetails: \(includeToolCallDetails),
             stopOnToolError: \(stopOnToolError),
-            includeReasoning: \(includeReasoning)
+            includeReasoning: \(includeReasoning),
+            sessionHistoryLimit: \(sessionHistoryLimit.map(String.init) ?? "nil")
         )
         """
     }

@@ -19,11 +19,11 @@ private struct MockAgentForRunHooks: Agent {
         configuration = AgentConfiguration(name: name)
     }
 
-    func run(_ input: String, hooks _: (any RunHooks)?) async throws -> AgentResult {
+    func run(_ input: String, session _: (any Session)? = nil, hooks _: (any RunHooks)? = nil) async throws -> AgentResult {
         AgentResult(output: "Mock response: \(input)")
     }
 
-    nonisolated func stream(_ input: String, hooks _: (any RunHooks)?) -> AsyncThrowingStream<AgentEvent, Error> {
+    nonisolated func stream(_ input: String, session _: (any Session)? = nil, hooks _: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         AsyncThrowingStream { continuation in
             continuation.yield(.started(input: input))
             continuation.yield(.completed(result: AgentResult(output: "Mock response")))

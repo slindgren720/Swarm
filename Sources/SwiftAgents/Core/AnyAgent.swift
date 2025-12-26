@@ -75,20 +75,22 @@ public struct AnyAgent: Agent, @unchecked Sendable {
     /// Executes the agent with the given input and returns a result.
     /// - Parameters:
     ///   - input: The user's input/query.
+    ///   - session: Optional session for context persistence.
     ///   - hooks: Optional hooks for lifecycle callbacks.
     /// - Returns: The result of the agent's execution.
     /// - Throws: `AgentError` if execution fails.
-    public func run(_ input: String, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
-        try await box.run(input, hooks: hooks)
+    public func run(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
+        try await box.run(input, session: session, hooks: hooks)
     }
 
     /// Streams the agent's execution, yielding events as they occur.
     /// - Parameters:
     ///   - input: The user's input/query.
+    ///   - session: Optional session for context persistence.
     ///   - hooks: Optional hooks for lifecycle callbacks.
     /// - Returns: An async stream of agent events.
-    nonisolated public func stream(_ input: String, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
-        box.stream(input, hooks: hooks)
+    nonisolated public func stream(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
+        box.stream(input, session: session, hooks: hooks)
     }
 
     /// Cancels any ongoing execution.
@@ -114,8 +116,8 @@ private protocol AnyAgentBox: Sendable {
     var tracer: (any Tracer)? { get }
 
     // Methods
-    func run(_ input: String, hooks: (any RunHooks)?) async throws -> AgentResult
-    func stream(_ input: String, hooks: (any RunHooks)?) -> AsyncThrowingStream<AgentEvent, Error>
+    func run(_ input: String, session: (any Session)?, hooks: (any RunHooks)?) async throws -> AgentResult
+    func stream(_ input: String, session: (any Session)?, hooks: (any RunHooks)?) -> AsyncThrowingStream<AgentEvent, Error>
     func cancel() async
 }
 
@@ -155,12 +157,12 @@ private final class AgentBox<A: Agent>: AnyAgentBox, @unchecked Sendable {
 
     // MARK: - Methods
 
-    func run(_ input: String, hooks: (any RunHooks)?) async throws -> AgentResult {
-        try await agent.run(input, hooks: hooks)
+    func run(_ input: String, session: (any Session)?, hooks: (any RunHooks)?) async throws -> AgentResult {
+        try await agent.run(input, session: session, hooks: hooks)
     }
 
-    func stream(_ input: String, hooks: (any RunHooks)?) -> AsyncThrowingStream<AgentEvent, Error> {
-        agent.stream(input, hooks: hooks)
+    func stream(_ input: String, session: (any Session)?, hooks: (any RunHooks)?) -> AsyncThrowingStream<AgentEvent, Error> {
+        agent.stream(input, session: session, hooks: hooks)
     }
 
     func cancel() async {

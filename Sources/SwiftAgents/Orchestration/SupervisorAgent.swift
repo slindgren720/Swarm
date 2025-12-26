@@ -535,7 +535,7 @@ public actor SupervisorAgent: Agent {
 
     // MARK: - Agent Protocol Methods
 
-    public func run(_ input: String, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
+    public func run(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
         let builder = AgentResult.Builder()
         builder.start()
 
@@ -562,7 +562,7 @@ public actor SupervisorAgent: Agent {
                         await hooks?.onHandoff(context: context, fromAgent: self, toAgent: fallback)
                     }
 
-                    let result = try await fallback.run(input, hooks: hooks)
+                    let result = try await fallback.run(input, session: session, hooks: hooks)
                     builder.setOutput(result.output)
                     builder.setMetadata("routing_decision", .string("fallback"))
                     builder.setMetadata("routing_confidence", .double(0.0))
@@ -585,7 +585,7 @@ public actor SupervisorAgent: Agent {
             }
 
             // Execute the selected agent
-            let result = try await selectedEntry.agent.run(input, hooks: hooks)
+            let result = try await selectedEntry.agent.run(input, session: session, hooks: hooks)
 
             // Update context with result
             if let context {
@@ -617,7 +617,7 @@ public actor SupervisorAgent: Agent {
                 let errorContext = AgentContext(input: input)
                 await hooks?.onHandoff(context: errorContext, fromAgent: self, toAgent: fallback)
 
-                let result = try await fallback.run(input, hooks: hooks)
+                let result = try await fallback.run(input, session: session, hooks: hooks)
                 builder.setOutput(result.output)
                 builder.setMetadata("routing_decision", .string("fallback_after_error"))
                 builder.setMetadata("routing_error", .string(error.localizedDescription))
@@ -633,11 +633,11 @@ public actor SupervisorAgent: Agent {
         }
     }
 
-    nonisolated public func stream(_ input: String, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
+    nonisolated public func stream(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         StreamHelper.makeTrackedStream(for: self) { actor, continuation in
             continuation.yield(.started(input: input))
             do {
-                let result = try await actor.run(input, hooks: hooks)
+                let result = try await actor.run(input, session: session, hooks: hooks)
                 continuation.yield(.completed(result: result))
                 continuation.finish()
             } catch let error as AgentError {
@@ -668,15 +668,21 @@ public actor SupervisorAgent: Agent {
     /// - Parameters:
     ///   - agentName: The name of the agent to execute.
     ///   - input: The input to pass to the agent.
+    ///   - session: Optional session for conversation context.
     ///   - hooks: Optional hooks for lifecycle callbacks.
     /// - Returns: The agent's result.
     /// - Throws: `AgentError.internalError` if agent not found.
-    public func executeAgent(named agentName: String, input: String, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
+    public func executeAgent(
+        named agentName: String,
+        input: String,
+        session: (any Session)? = nil,
+        hooks: (any RunHooks)? = nil
+    ) async throws -> AgentResult {
         guard let entry = agentRegistry.first(where: { $0.name == agentName }) else {
             throw AgentError.internalError(reason: "Agent '\(agentName)' not found")
         }
 
-        return try await entry.agent.run(input, hooks: hooks)
+        return try await entry.agent.run(input, session: session, hooks: hooks)
     }
 
     // MARK: Private
