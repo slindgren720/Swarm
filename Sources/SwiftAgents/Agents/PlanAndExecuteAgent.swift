@@ -319,10 +319,11 @@ public actor PlanAndExecuteAgent: Agent {
     /// Executes the agent with the given input and returns a result.
     /// - Parameters:
     ///   - input: The user's input/query.
+    ///   - session: Optional session for conversation history management.
     ///   - hooks: Optional hooks for observing agent execution events.
     /// - Returns: The result of the agent's execution.
     /// - Throws: `AgentError` if execution fails, or `GuardrailError` if guardrails trigger.
-    public func run(_ input: String, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
+    public func run(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
         guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
@@ -339,22 +340,42 @@ public actor PlanAndExecuteAgent: Agent {
             let resultBuilder = AgentResult.Builder()
             _ = resultBuilder.start()
 
-            // Store input in memory if available
-            if let mem = memory {
-                await mem.add(.user(input))
+            // Load conversation history from session (limit to recent messages)
+            var sessionHistory: [MemoryMessage] = []
+            if let session = session {
+                sessionHistory = try await session.getItems(limit: 50)
             }
 
-            // Execute the Plan-and-Execute loop
+            // Create user message for this turn
+            let userMessage = MemoryMessage.user(input)
+
+            // Store in memory (for AI context) if available
+            if let mem = memory {
+                // Add session history to memory
+                for msg in sessionHistory {
+                    await mem.add(msg)
+                }
+                await mem.add(userMessage)
+            }
+
+            // Execute the Plan-and-Execute loop with session context
             let output = try await executePlanAndExecuteLoop(
                 input: input,
+                sessionHistory: sessionHistory,
                 resultBuilder: resultBuilder,
                 hooks: hooks
             )
 
             _ = resultBuilder.setOutput(output)
 
-            // Run output guardrails BEFORE storing in memory
+            // Run output guardrails BEFORE storing in memory/session
             try await runner.runOutputGuardrails(outputGuardrails, output: output, agent: self, context: nil)
+
+            // Store turn in session (user + assistant messages)
+            if let session = session {
+                let assistantMessage = MemoryMessage.assistant(output)
+                try await session.addItems([userMessage, assistantMessage])
+            }
 
             // Only store output in memory if validation passed
             if let mem = memory {
@@ -373,13 +394,14 @@ public actor PlanAndExecuteAgent: Agent {
     /// Streams the agent's execution, yielding events as they occur.
     /// - Parameters:
     ///   - input: The user's input/query.
+    ///   - session: Optional session for conversation history management.
     ///   - hooks: Optional hooks for observing agent execution events.
     /// - Returns: An async stream of agent events.
-    nonisolated public func stream(_ input: String, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
+    nonisolated public func stream(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         StreamHelper.makeTrackedStream(for: self) { agent, continuation in
             continuation.yield(.started(input: input))
             do {
-                let result = try await agent.run(input, hooks: hooks)
+                let result = try await agent.run(input, session: session, hooks: hooks)
                 continuation.yield(.completed(result: result))
                 continuation.finish()
             } catch let error as AgentError {
@@ -402,6 +424,7 @@ public actor PlanAndExecuteAgent: Agent {
 
     private func executePlanAndExecuteLoop(
         input: String,
+        sessionHistory: [MemoryMessage] = [],
         resultBuilder: AgentResult.Builder,
         hooks: (any RunHooks)? = nil
     ) async throws -> String {
@@ -409,7 +432,7 @@ public actor PlanAndExecuteAgent: Agent {
         let startTime = ContinuousClock.now
 
         // Phase 1: Generate initial plan
-        var plan = try await generatePlan(for: input, hooks: hooks)
+        var plan = try await generatePlan(for: input, sessionHistory: sessionHistory, hooks: hooks)
         _ = resultBuilder.setMetadata("initialPlan", .string(plan.description))
 
         // Phase 2: Execute steps
@@ -484,16 +507,17 @@ public actor PlanAndExecuteAgent: Agent {
 
     // MARK: - Plan Generation
 
-    private func generatePlan(for input: String, hooks: (any RunHooks)? = nil) async throws -> ExecutionPlan {
-        let prompt = buildPlanningPrompt(for: input)
+    private func generatePlan(for input: String, sessionHistory: [MemoryMessage] = [], hooks: (any RunHooks)? = nil) async throws -> ExecutionPlan {
+        let prompt = buildPlanningPrompt(for: input, sessionHistory: sessionHistory)
         await hooks?.onLLMStart(context: nil, agent: self, systemPrompt: instructions, inputMessages: [MemoryMessage.user(prompt)])
         let response = try await generateResponse(prompt: prompt)
         await hooks?.onLLMEnd(context: nil, agent: self, response: response, usage: nil)
         return parsePlan(from: response, goal: input)
     }
 
-    private func buildPlanningPrompt(for input: String) -> String {
+    private func buildPlanningPrompt(for input: String, sessionHistory: [MemoryMessage] = []) -> String {
         let toolDescriptions = buildToolDescriptions()
+        let conversationContext = buildConversationContext(from: sessionHistory)
 
         return """
         \(instructions.isEmpty ? "You are a helpful AI assistant that creates structured plans." : instructions)
@@ -534,11 +558,31 @@ public actor PlanAndExecuteAgent: Agent {
         4. Specify dependencies as an array of step numbers.
         5. If a step has no tool, set toolName to null and toolArguments to {}.
         6. Respond ONLY with valid JSON - no additional text before or after.
+        \(conversationContext.isEmpty ? "" : "\nConversation History:\n\(conversationContext)")
 
         User Goal: \(input)
 
         Create your plan in JSON format:
         """
+    }
+
+    private func buildConversationContext(from sessionHistory: [MemoryMessage]) -> String {
+        guard !sessionHistory.isEmpty else { return "" }
+
+        var lines: [String] = []
+        for message in sessionHistory {
+            switch message.role {
+            case .user:
+                lines.append("User: \(message.content)")
+            case .assistant:
+                lines.append("Assistant: \(message.content)")
+            case .system:
+                lines.append("System: \(message.content)")
+            case .tool:
+                lines.append("Tool: \(message.content)")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func parsePlan(from response: String, goal: String) -> ExecutionPlan {

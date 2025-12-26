@@ -112,10 +112,11 @@ public actor ToolCallingAgent: Agent {
     /// Executes the agent with the given input and returns a result.
     /// - Parameters:
     ///   - input: The user's input/query.
+    ///   - session: Optional session for conversation history management.
     ///   - hooks: Optional run hooks for observing agent execution events.
     /// - Returns: The result of the agent's execution.
     /// - Throws: `AgentError` if execution fails, or `GuardrailError` if guardrails trigger.
-    public func run(_ input: String, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
+    public func run(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) async throws -> AgentResult {
         guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
@@ -132,22 +133,42 @@ public actor ToolCallingAgent: Agent {
             let resultBuilder = AgentResult.Builder()
             _ = resultBuilder.start()
 
-            // Store input in memory if available
-            if let mem = memory {
-                await mem.add(.user(input))
+            // Load conversation history from session (limit to recent messages)
+            var sessionHistory: [MemoryMessage] = []
+            if let session = session {
+                sessionHistory = try await session.getItems(limit: 50)
             }
 
-            // Execute the tool calling loop
+            // Create user message for this turn
+            let userMessage = MemoryMessage.user(input)
+
+            // Store in memory (for AI context) if available
+            if let mem = memory {
+                // Add session history to memory
+                for msg in sessionHistory {
+                    await mem.add(msg)
+                }
+                await mem.add(userMessage)
+            }
+
+            // Execute the tool calling loop with session context
             let output = try await executeToolCallingLoop(
                 input: input,
+                sessionHistory: sessionHistory,
                 resultBuilder: resultBuilder,
                 hooks: hooks
             )
 
             _ = resultBuilder.setOutput(output)
 
-            // Run output guardrails BEFORE storing in memory
+            // Run output guardrails BEFORE storing in memory/session
             try await runner.runOutputGuardrails(outputGuardrails, output: output, agent: self, context: nil)
+
+            // Store turn in session (user + assistant messages)
+            if let session = session {
+                let assistantMessage = MemoryMessage.assistant(output)
+                try await session.addItems([userMessage, assistantMessage])
+            }
 
             // Only store output in memory if validation passed
             if let mem = memory {
@@ -170,13 +191,14 @@ public actor ToolCallingAgent: Agent {
     /// Streams the agent's execution, yielding events as they occur.
     /// - Parameters:
     ///   - input: The user's input/query.
+    ///   - session: Optional session for conversation history management.
     ///   - hooks: Optional run hooks for observing agent execution events.
     /// - Returns: An async stream of agent events.
-    nonisolated public func stream(_ input: String, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
+    nonisolated public func stream(_ input: String, session: (any Session)? = nil, hooks: (any RunHooks)? = nil) -> AsyncThrowingStream<AgentEvent, Error> {
         StreamHelper.makeTrackedStream(for: self) { agent, continuation in
             continuation.yield(.started(input: input))
             do {
-                let result = try await agent.run(input, hooks: hooks)
+                let result = try await agent.run(input, session: session, hooks: hooks)
                 continuation.yield(.completed(result: result))
                 continuation.finish()
             } catch let error as AgentError {
@@ -201,6 +223,7 @@ public actor ToolCallingAgent: Agent {
 
     private func executeToolCallingLoop(
         input: String,
+        sessionHistory: [MemoryMessage] = [],
         resultBuilder: AgentResult.Builder,
         hooks: (any RunHooks)? = nil
     ) async throws -> String {
@@ -211,6 +234,20 @@ public actor ToolCallingAgent: Agent {
         // Add system message with instructions
         let systemMessage = buildSystemMessage()
         conversationHistory.append(.system(systemMessage))
+
+        // Add session history as conversation context
+        for msg in sessionHistory {
+            switch msg.role {
+            case .user:
+                conversationHistory.append(.user(msg.content))
+            case .assistant:
+                conversationHistory.append(.assistant(msg.content))
+            case .system:
+                conversationHistory.append(.system(msg.content))
+            case .tool:
+                conversationHistory.append(.toolResult(toolName: "previous", result: msg.content))
+            }
+        }
 
         // Add user input
         conversationHistory.append(.user(input))
