@@ -108,7 +108,7 @@ public actor ReActAgent: Agent {
             // Load conversation history from session (limit to recent messages)
             var sessionHistory: [MemoryMessage] = []
             if let session {
-                sessionHistory = try await session.getItems(limit: 50)
+                sessionHistory = try await session.getItems(limit: configuration.sessionHistoryLimit)
             }
 
             // Create user message for this turn

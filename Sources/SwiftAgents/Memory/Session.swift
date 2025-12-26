@@ -33,7 +33,10 @@ public protocol Session: Actor, Sendable {
     ///
     /// Session IDs are used to distinguish between different conversation contexts
     /// and should remain constant throughout the session's lifecycle.
-    var sessionId: String { get }
+    ///
+    /// This property is `nonisolated` because session IDs are immutable and can
+    /// be safely accessed without actor isolation.
+    nonisolated var sessionId: String { get }
 
     /// Number of items currently stored in the session.
     ///
@@ -45,6 +48,15 @@ public protocol Session: Actor, Sendable {
     ///
     /// Returns `true` if `itemCount` is zero, `false` otherwise.
     var isEmpty: Bool { get async }
+
+    /// Retrieves the item count with proper error propagation.
+    ///
+    /// Unlike `itemCount`, this method throws on backend errors, allowing callers
+    /// to distinguish between an empty session and a backend failure.
+    ///
+    /// - Returns: The number of items in the session.
+    /// - Throws: `SessionError` if the backend operation fails.
+    func getItemCount() async throws -> Int
 
     /// Retrieves conversation history from the session.
     ///
@@ -90,37 +102,77 @@ public protocol Session: Actor, Sendable {
 // MARK: - SessionError
 
 /// Errors that can occur during session operations.
-public enum SessionError: Error, Sendable, Equatable {
+public enum SessionError: Error, Sendable {
     /// Failed to retrieve items from the session.
-    case retrievalFailed(reason: String)
+    /// - Parameters:
+    ///   - reason: Human-readable description of what went wrong.
+    ///   - underlyingError: The original error that caused the failure, if any.
+    case retrievalFailed(reason: String, underlyingError: String? = nil)
 
     /// Failed to store items in the session.
-    case storageFailed(reason: String)
+    case storageFailed(reason: String, underlyingError: String? = nil)
 
     /// Failed to delete items from the session.
-    case deletionFailed(reason: String)
+    case deletionFailed(reason: String, underlyingError: String? = nil)
 
     /// Session is in an invalid state.
     case invalidState(reason: String)
 
     /// Backend operation failed.
-    case backendError(reason: String)
+    case backendError(reason: String, underlyingError: String? = nil)
 }
 
-// MARK: LocalizedError
+// MARK: - SessionError + Equatable
+
+extension SessionError: Equatable {
+    public static func == (lhs: SessionError, rhs: SessionError) -> Bool {
+        switch (lhs, rhs) {
+        case let (.retrievalFailed(r1, u1), .retrievalFailed(r2, u2)):
+            return r1 == r2 && u1 == u2
+        case let (.storageFailed(r1, u1), .storageFailed(r2, u2)):
+            return r1 == r2 && u1 == u2
+        case let (.deletionFailed(r1, u1), .deletionFailed(r2, u2)):
+            return r1 == r2 && u1 == u2
+        case let (.invalidState(r1), .invalidState(r2)):
+            return r1 == r2
+        case let (.backendError(r1, u1), .backendError(r2, u2)):
+            return r1 == r2 && u1 == u2
+        default:
+            return false
+        }
+    }
+}
+
+// MARK: - SessionError + LocalizedError
 
 extension SessionError: LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case .retrievalFailed(let reason):
+        case .retrievalFailed(let reason, let underlying):
+            if let underlying {
+                return "Failed to retrieve session items: \(reason). Underlying: \(underlying)"
+            }
             return "Failed to retrieve session items: \(reason)"
-        case .storageFailed(let reason):
+
+        case .storageFailed(let reason, let underlying):
+            if let underlying {
+                return "Failed to store session items: \(reason). Underlying: \(underlying)"
+            }
             return "Failed to store session items: \(reason)"
-        case .deletionFailed(let reason):
+
+        case .deletionFailed(let reason, let underlying):
+            if let underlying {
+                return "Failed to delete session items: \(reason). Underlying: \(underlying)"
+            }
             return "Failed to delete session items: \(reason)"
+
         case .invalidState(let reason):
             return "Session in invalid state: \(reason)"
-        case .backendError(let reason):
+
+        case .backendError(let reason, let underlying):
+            if let underlying {
+                return "Session backend error: \(reason). Underlying: \(underlying)"
+            }
             return "Session backend error: \(reason)"
         }
     }
@@ -148,5 +200,12 @@ public extension Session {
     /// - Throws: If retrieval fails.
     func getAllItems() async throws -> [MemoryMessage] {
         try await getItems(limit: nil)
+    }
+
+    /// Default implementation that delegates to itemCount.
+    ///
+    /// Implementations should override this for proper error handling.
+    func getItemCount() async throws -> Int {
+        await itemCount
     }
 }

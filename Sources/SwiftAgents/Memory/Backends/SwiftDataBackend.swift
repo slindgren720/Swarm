@@ -97,11 +97,34 @@
         }
 
         public func storeAll(_ messages: [MemoryMessage], conversationId: String) async throws {
-            for message in messages {
-                let persisted = PersistedMessage(from: message, conversationId: conversationId)
-                modelContext.insert(persisted)
+            guard !messages.isEmpty else { return }
+
+            // For small batches (<=100), use single transaction for efficiency
+            if messages.count <= 100 {
+                for message in messages {
+                    let persisted = PersistedMessage(from: message, conversationId: conversationId)
+                    modelContext.insert(persisted)
+                }
+                try modelContext.save()
+            } else {
+                // For large batches, save in chunks to manage memory pressure
+                let batchSize = 100
+                var startIndex = messages.startIndex
+
+                while startIndex < messages.endIndex {
+                    let endIndex = messages.index(startIndex, offsetBy: batchSize, limitedBy: messages.endIndex) ?? messages.endIndex
+                    let chunk = messages[startIndex..<endIndex]
+
+                    for message in chunk {
+                        let persisted = PersistedMessage(from: message, conversationId: conversationId)
+                        modelContext.insert(persisted)
+                    }
+                    try modelContext.save()
+
+                    startIndex = endIndex
+                }
             }
-            try modelContext.save()
+
             Log.memory.debug("Stored \(messages.count) messages for conversation: \(conversationId)")
         }
 

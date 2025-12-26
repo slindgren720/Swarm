@@ -42,6 +42,27 @@ public actor TraceContext: Sendable {
     ///
     /// This property uses `@TaskLocal` storage, so the context automatically propagates
     /// through async calls and child tasks.
+    ///
+    /// ## Actor Isolation
+    ///
+    /// `TraceContext` is an actor. When accessing its properties or methods,
+    /// you must use `await` to respect actor isolation:
+    ///
+    /// ```swift
+    /// if let context = TraceContext.current {
+    ///     // Access actor-isolated properties with await
+    ///     let spans = await context.getSpans()
+    ///     let span = await context.startSpan("operation")
+    ///
+    ///     // These are nonisolated and don't need await
+    ///     let id = context.traceId
+    ///     let name = context.name
+    /// }
+    /// ```
+    ///
+    /// - Note: The context reference itself is safe to pass across isolation boundaries
+    ///   because actors are `Sendable`. The returned context is always the same instance
+    ///   within the `withTrace` scope.
     public static var current: TraceContext? {
         TraceContextStorage.current
     }
@@ -218,5 +239,43 @@ public actor TraceContext: Sendable {
 extension TraceContext: CustomStringConvertible {
     nonisolated public var description: String {
         "TraceContext(\(name))"
+    }
+}
+
+// MARK: - Convenience Methods
+
+public extension TraceContext {
+    /// Executes an operation within a new span, automatically handling start and end.
+    ///
+    /// The span is automatically ended with `.ok` status on success, or `.error`
+    /// if the operation throws.
+    ///
+    /// - Parameters:
+    ///   - name: Name of the span.
+    ///   - metadata: Optional metadata for the span.
+    ///   - operation: The operation to execute within the span.
+    /// - Returns: The result of the operation.
+    /// - Throws: Any error thrown by the operation.
+    ///
+    /// Example:
+    /// ```swift
+    /// let result = try await context.withSpan("database-query") {
+    ///     try await database.query("SELECT * FROM users")
+    /// }
+    /// ```
+    func withSpan<T: Sendable>(
+        _ name: String,
+        metadata: [String: SendableValue] = [:],
+        operation: @Sendable () async throws -> T
+    ) async rethrows -> T {
+        let span = startSpan(name, metadata: metadata)
+        do {
+            let result = try await operation()
+            endSpan(span, status: .ok)
+            return result
+        } catch {
+            endSpan(span, status: .error)
+            throw error
+        }
     }
 }

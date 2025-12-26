@@ -59,7 +59,7 @@
         ///
         /// The session ID is used as the conversation ID when storing
         /// messages in the backend, ensuring data isolation between sessions.
-        public let sessionId: String
+        public nonisolated let sessionId: String
 
         // MARK: - Session Protocol Properties
 
@@ -93,6 +93,24 @@
         public var isEmpty: Bool {
             get async {
                 await itemCount == 0
+            }
+        }
+
+        /// Retrieves the item count with proper error propagation.
+        ///
+        /// Unlike `itemCount`, this method throws on backend errors, allowing callers
+        /// to distinguish between an empty session and a backend failure.
+        ///
+        /// - Returns: The number of items in the session.
+        /// - Throws: `SessionError.backendError` if the backend operation fails.
+        public func getItemCount() async throws -> Int {
+            do {
+                return try await backend.messageCount(conversationId: sessionId)
+            } catch {
+                throw SessionError.backendError(
+                    reason: "Failed to get item count for session '\(sessionId)'",
+                    underlyingError: error.localizedDescription
+                )
             }
         }
 
