@@ -357,6 +357,8 @@ public actor ParallelGroup: Agent {
 
     nonisolated public var inferenceProvider: (any InferenceProvider)? { nil }
 
+    nonisolated public var tracer: (any Tracer)? { nil }
+
     // MARK: - Initialization
 
     /// Creates a new parallel group orchestrator.

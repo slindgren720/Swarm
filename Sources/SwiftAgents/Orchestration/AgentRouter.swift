@@ -356,6 +356,7 @@ public actor AgentRouter: Agent {
 
     nonisolated public var memory: (any Memory)? { nil }
     nonisolated public var inferenceProvider: (any InferenceProvider)? { nil }
+    nonisolated public var tracer: (any Tracer)? { nil }
 
     // MARK: - Initialization
 

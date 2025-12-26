@@ -151,6 +151,9 @@ public actor SequentialChain: Agent {
     /// Inference provider (chains don't use inference directly).
     nonisolated public var inferenceProvider: (any InferenceProvider)? { nil }
 
+    /// Tracer (chains don't use tracing directly).
+    nonisolated public var tracer: (any Tracer)? { nil }
+
     // MARK: - Initialization
 
     /// Creates a new sequential chain.
