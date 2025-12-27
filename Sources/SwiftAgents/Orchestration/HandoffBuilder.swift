@@ -360,7 +360,7 @@ public extension AnyHandoffConfiguration {
             return override
         }
         let typeName = String(describing: type(of: targetAgent))
-        return "handoff_to_\(typeName.lowercased())"
+        return "handoff_to_\(typeName.camelCaseToSnakeCase())"
     }
 
     /// The effective description for this handoff tool.

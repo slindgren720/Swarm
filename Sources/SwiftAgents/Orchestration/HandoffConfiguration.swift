@@ -294,7 +294,7 @@ public extension HandoffConfiguration {
 
 // MARK: - String Extension for Snake Case
 
-private extension String {
+internal extension String {
     /// Converts a camelCase or PascalCase string to snake_case.
     ///
     /// Example: "ExecutorAgent" -> "executor_agent"
