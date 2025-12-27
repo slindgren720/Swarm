@@ -15,6 +15,8 @@ SwiftAgents provides the agent orchestration layer on top of SwiftAI SDK, enabli
 
 - 🤖 **Agent Framework** - ReAct, PlanAndExecute, and ToolCalling patterns for autonomous reasoning
 - 🧠 **Memory Systems** - Conversation, sliding window, summary, hybrid, and pluggable persistence backends
+- 💬 **Session Management** - Automatic conversation history with in-memory and persistent storage
+- 🔍 **Distributed Tracing** - TraceContext with hierarchical span tracking and task-local propagation
 - 🛠️ **Tool Integration** - Type-safe tool protocol with fluent builder API and built-in utilities
 - 🎭 **Multi-Agent Orchestration** - Supervisor-worker patterns, sequential chains, parallel execution, and intelligent routing
 - 📊 **Observability** - Cross-platform tracing with swift-log, metrics collection, and event streaming
@@ -131,6 +133,150 @@ print(response2.output)  // "Your name is Alice and you love Swift programming."
 // Check memory contents
 let messages = await memory.allMessages()
 print("Stored messages: \(messages.count)")
+```
+
+### Session Management
+
+Manage conversation history automatically with sessions—no manual history tracking required:
+
+```swift
+import SwiftAgents
+
+// Create an in-memory session
+let session = InMemorySession(sessionId: "user_123")
+
+let agent = ReActAgent.Builder()
+    .inferenceProvider(provider)
+    .instructions("You are a helpful assistant.")
+    .build()
+
+// First turn - session automatically stores history
+let response1 = try await agent.run(
+    "My favorite color is blue",
+    session: session
+)
+
+// Second turn - agent automatically has access to previous messages
+let response2 = try await agent.run(
+    "What's my favorite color?",
+    session: session
+)
+print(response2.output)  // "Your favorite color is blue."
+
+// Inspect session contents
+let history = try await session.getAllItems()
+print("Messages in session: \(history.count)")  // 4 (2 user + 2 assistant)
+```
+
+**Persistent sessions** survive app restarts (Apple platforms only):
+
+```swift
+#if canImport(SwiftData)
+// Create a persistent session (survives app restarts)
+let session = try PersistentSession.persistent(sessionId: "user_123")
+
+let agent = ReActAgent.Builder()
+    .inferenceProvider(provider)
+    .build()
+
+// Conversation history is automatically saved to disk
+try await agent.run("Remember this for later", session: session)
+
+// Even after app restart, history is preserved
+let history = try await session.getAllItems()
+#endif
+```
+
+**Session operations**:
+
+```swift
+// Get recent messages only
+let recent = try await session.getItems(limit: 10)
+
+// Remove the last message (undo)
+let removed = try await session.popItem()
+
+// Clear entire conversation
+try await session.clearSession()
+
+// Check session state
+let count = await session.itemCount
+let empty = await session.isEmpty
+```
+
+### TraceContext: Distributed Tracing
+
+Group related operations and track execution hierarchies with `TraceContext`:
+
+```swift
+import SwiftAgents
+
+// Execute agent within a trace context
+await TraceContext.withTrace(
+    "Customer Support Chat",
+    groupId: "session_456",
+    metadata: ["customer_id": .string("user_789")]
+) {
+    // TraceContext.current is automatically available
+    let result = try await agent.run("Help me with my order")
+
+    // Access trace information
+    if let context = TraceContext.current {
+        print("Trace ID: \(await context.traceId)")
+        print("Duration: \(await context.duration)")
+
+        // Get all spans collected during execution
+        let spans = await context.getSpans()
+        for span in spans {
+            print("Span: \(span.name), Duration: \(span.duration ?? 0)")
+        }
+    }
+}
+```
+
+**Manual span tracking**:
+
+```swift
+await TraceContext.withTrace("Data Pipeline") {
+    guard let context = TraceContext.current else { return }
+
+    // Start a span for database query
+    let dbSpan = await context.startSpan(
+        "database-query",
+        metadata: ["table": .string("users")]
+    )
+
+    let users = try await fetchUsers()
+    await context.endSpan(dbSpan, status: .ok)
+
+    // Start another span for processing
+    let processSpan = await context.startSpan("process-data")
+    let processed = processUsers(users)
+    await context.endSpan(processSpan, status: .ok)
+}
+```
+
+**Nested traces** with automatic parent-child relationships:
+
+```swift
+await TraceContext.withTrace("Outer Workflow") {
+    let result1 = try await agent.run("First query")
+
+    // Spans are collected in the outer context
+    if let context = TraceContext.current {
+        let spans = await context.getSpans()
+        print("Total spans: \(spans.count)")
+
+        // Inspect span hierarchy
+        for span in spans {
+            if span.parentSpanId != nil {
+                print("  Child span: \(span.name)")
+            } else {
+                print("Root span: \(span.name)")
+            }
+        }
+    }
+}
 ```
 
 ### Streaming Responses
@@ -756,7 +902,82 @@ enum AgentEvent {
 }
 ```
 
-### 2. Memory Systems
+### 2. Session Management
+
+The `Session` protocol provides automatic conversation history management:
+
+```swift
+public protocol Session: Actor, Sendable {
+    var sessionId: String { get }
+    var itemCount: Int { get async }
+    var isEmpty: Bool { get async }
+
+    func getItems(limit: Int?) async throws -> [MemoryMessage]
+    func addItems(_ items: [MemoryMessage]) async throws
+    func popItem() async throws -> MemoryMessage?
+    func clearSession() async throws
+}
+```
+
+**Built-in Implementations:**
+
+| Session Type | Description | Platforms | Use Case |
+|-------------|-------------|-----------|----------|
+| `InMemorySession` | Fast in-memory storage | All | Testing, temporary conversations |
+| `PersistentSession` | SwiftData-backed persistence | Apple only | Production apps, cross-session history |
+
+**Session vs Memory:**
+
+Sessions and Memory serve complementary purposes:
+- **Session**: Persists conversation history across agent runs (storage layer)
+- **Memory**: Provides AI-optimized context from history (intelligence layer)
+
+```swift
+// Session: Long-term storage
+let session = InMemorySession(sessionId: "chat_123")
+try await agent.run("Hello", session: session)
+
+// Memory: AI context generation
+let memory = ConversationMemory(maxTokens: 4000)
+let context = await memory.context(for: query, tokenLimit: 2000)
+```
+
+**InMemorySession Example:**
+
+```swift
+let session = InMemorySession(sessionId: "user_123")
+
+// Add messages
+try await session.addItem(.user("What's 2+2?"))
+try await session.addItem(.assistant("4"))
+
+// Retrieve history
+let recent = try await session.getItems(limit: 10)
+let all = try await session.getAllItems()
+
+// Session state
+print(await session.itemCount)  // 2
+print(await session.isEmpty)    // false
+```
+
+**PersistentSession Example (Apple Platforms):**
+
+```swift
+#if canImport(SwiftData)
+// Disk storage (survives app restarts)
+let session = try PersistentSession.persistent(sessionId: "user_456")
+
+// In-memory storage (for testing)
+let testSession = try PersistentSession.inMemory(sessionId: "test")
+
+// Multiple sessions with shared backend
+let backend = try SwiftDataBackend.persistent()
+let session1 = PersistentSession(sessionId: "chat_1", backend: backend)
+let session2 = PersistentSession(sessionId: "chat_2", backend: backend)
+#endif
+```
+
+### 3. Memory Systems
 
 All memory implementations conform to the `Memory` protocol (actor-based for thread safety):
 
@@ -799,7 +1020,100 @@ enum MemoryMessage {
 }
 ```
 
-### 3. Tools
+### 4. Distributed Tracing (TraceContext)
+
+`TraceContext` provides distributed tracing with task-local propagation:
+
+```swift
+public actor TraceContext: Sendable {
+    static var current: TraceContext? { get }
+
+    let name: String
+    let traceId: UUID
+    let groupId: String?
+    let metadata: [String: SendableValue]
+    let startTime: Date
+    var duration: TimeInterval { get }
+
+    static func withTrace<T: Sendable>(
+        _ name: String,
+        groupId: String? = nil,
+        metadata: [String: SendableValue] = [:],
+        operation: @Sendable () async throws -> T
+    ) async rethrows -> T
+
+    func startSpan(_ name: String, metadata: [String: SendableValue] = [:]) -> TraceSpan
+    func endSpan(_ span: TraceSpan, status: SpanStatus = .ok)
+    func getSpans() -> [TraceSpan]
+}
+```
+
+**TraceSpan Structure:**
+
+```swift
+public struct TraceSpan: Sendable, Identifiable {
+    let id: UUID
+    let parentSpanId: UUID?
+    let name: String
+    let startTime: Date
+    var endTime: Date?
+    var status: SpanStatus  // .active, .ok, .error, .cancelled
+    let metadata: [String: SendableValue]
+    var duration: TimeInterval? { get }
+
+    func completed(status: SpanStatus = .ok) -> TraceSpan
+}
+```
+
+**Key Features:**
+
+- **Task-Local Storage**: Context automatically propagates through async calls
+- **Hierarchical Spans**: Parent-child relationships track operation trees
+- **Automatic Timing**: Start/end times recorded automatically
+- **Metadata Support**: Attach custom key-value data to traces and spans
+- **Group Linking**: Group related traces with `groupId`
+
+**Usage Pattern:**
+
+```swift
+// Create trace context
+await TraceContext.withTrace("agent-workflow", groupId: "session_123") {
+    // Access current context anywhere in the async call tree
+    guard let context = TraceContext.current else { return }
+
+    // Start operation span
+    let span = await context.startSpan("tool-execution")
+
+    // ... perform operation ...
+
+    // End span with status
+    await context.endSpan(span, status: .ok)
+
+    // Retrieve all collected spans
+    let allSpans = await context.getSpans()
+    for span in allSpans {
+        print("\(span.name): \(span.duration ?? 0)s")
+    }
+}
+```
+
+**Integration with Agents:**
+
+```swift
+// Traces work seamlessly with agent execution
+await TraceContext.withTrace("customer-support") {
+    let result1 = try await agent.run("First question")
+    let result2 = try await agent.run("Follow-up question")
+
+    // Both runs are traced in the same context
+    if let context = TraceContext.current {
+        print("Total trace duration: \(await context.duration)")
+        print("Spans collected: \(await context.getSpans().count)")
+    }
+}
+```
+
+### 5. Tools
 
 Tools give agents capabilities beyond text generation:
 
@@ -845,7 +1159,7 @@ let result = try await registry.execute(
 )
 ```
 
-### 4. Multi-Agent Orchestration
+### 6. Multi-Agent Orchestration
 
 Coordinate multiple agents for complex workflows:
 
@@ -901,7 +1215,7 @@ await context.set(key: "location", value: .string("San Francisco"))
 let location = await context.get(key: "location")
 ```
 
-### 5. Observability
+### 7. Observability
 
 Monitor agent execution with built-in tracing:
 
@@ -950,7 +1264,7 @@ enum TraceEvent {
 }
 ```
 
-### 6. Resilience
+### 8. Resilience
 
 Build robust agents with failure handling:
 
@@ -1304,9 +1618,11 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ## Roadmap
 
-- [x] Additional agent patterns (PlanAndExecuteAgent, ToolCallingAgent) ✅ NEW
-- [x] @Agent macro builder generation ✅ NEW
-- [x] Swift-style API naming (Memory protocol, method renames) ✅ NEW
+- [x] Additional agent patterns (PlanAndExecuteAgent, ToolCallingAgent) ✅
+- [x] @Agent macro builder generation ✅
+- [x] Swift-style API naming (Memory protocol, method renames) ✅
+- [x] Session management for conversation history ✅ NEW
+- [x] TraceContext for distributed tracing ✅ NEW
 - [ ] Vector memory with embedding support
 - [ ] More built-in tools (web search, file system, etc.)
 - [ ] SwiftData schema versioning for memory persistence
