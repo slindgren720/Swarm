@@ -166,14 +166,23 @@ public extension Agent {
     ) async throws -> AgentResponse {
         let result = try await run(input, session: session, hooks: hooks)
 
+        // Create lookup dictionary for O(1) access instead of O(n²)
+        let toolCallsById = Dictionary(uniqueKeysWithValues: result.toolCalls.map { ($0.id, $0) })
+
         // Convert ToolResults to ToolCallRecords
-        let toolCallRecords: [ToolCallRecord] = result.toolResults.map { toolResult in
-            ToolCallRecord(
-                toolName: result.toolCalls.first { $0.id == toolResult.callId }?.toolName ?? "unknown",
-                arguments: result.toolCalls.first { $0.id == toolResult.callId }?.arguments ?? [:],
+        let toolCallRecords: [ToolCallRecord] = result.toolResults.compactMap { toolResult in
+            guard let toolCall = toolCallsById[toolResult.callId] else {
+                Log.agents.warning("Tool result missing matching call: \(toolResult.callId)")
+                return nil
+            }
+            return ToolCallRecord(
+                toolName: toolCall.toolName,
+                arguments: toolCall.arguments,
                 result: toolResult.output,
                 duration: toolResult.duration,
-                timestamp: result.toolCalls.first { $0.id == toolResult.callId }?.timestamp ?? Date()
+                timestamp: toolCall.timestamp,
+                isSuccess: toolResult.isSuccess,
+                errorMessage: toolResult.errorMessage
             )
         }
 
@@ -184,7 +193,8 @@ public extension Agent {
             timestamp: Date(),
             metadata: result.metadata,
             toolCalls: toolCallRecords,
-            usage: result.tokenUsage
+            usage: result.tokenUsage,
+            iterationCount: result.iterationCount
         )
     }
 

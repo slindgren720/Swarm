@@ -1,0 +1,355 @@
+// MCPClient.swift
+// SwiftAgents Framework
+//
+// A client for managing multiple MCP server connections and aggregating their tools and resources.
+
+import Foundation
+
+// MARK: - MCPClient
+
+/// A client that manages multiple Model Context Protocol (MCP) server connections.
+///
+/// MCPClient provides a unified interface for working with multiple MCP servers,
+/// aggregating their tools and resources into a single point of access. It handles
+/// server lifecycle management, tool caching, and resource discovery.
+///
+/// ## Features
+///
+/// - **Multi-Server Management**: Connect to and manage multiple MCP servers simultaneously
+/// - **Tool Aggregation**: Discover and cache tools from all connected servers
+/// - **Resource Access**: Query resources across all servers with automatic server resolution
+/// - **Lifecycle Management**: Properly initialize and close server connections
+///
+/// ## Example Usage
+///
+/// ```swift
+/// // Create the client
+/// let client = MCPClient()
+///
+/// // Add servers
+/// let filesystemServer = HTTPMCPServer(name: "filesystem", baseURL: filesystemURL)
+/// let databaseServer = HTTPMCPServer(name: "database", baseURL: databaseURL)
+///
+/// try await client.addServer(filesystemServer)
+/// try await client.addServer(databaseServer)
+///
+/// // Discover all available tools
+/// let tools = try await client.getAllTools()
+/// print("Available tools: \(tools.map { $0.name })")
+///
+/// // Access resources
+/// let resources = try await client.getAllResources()
+/// for resource in resources {
+///     let content = try await client.readResource(uri: resource.uri)
+///     print("\(resource.name): \(content)")
+/// }
+///
+/// // Clean up when done
+/// try await client.closeAll()
+/// ```
+///
+/// ## Thread Safety
+///
+/// MCPClient is implemented as an actor, ensuring thread-safe access to all
+/// mutable state. All methods are safe to call concurrently from multiple
+/// async contexts.
+public actor MCPClient {
+    // MARK: Public
+
+    /// The names of all currently connected servers.
+    ///
+    /// Use this property to check which servers are registered with the client.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let serverNames = await client.connectedServers
+    /// print("Connected to: \(serverNames.joined(separator: ", "))")
+    /// ```
+    public var connectedServers: [String] {
+        Array(servers.keys)
+    }
+
+    // MARK: - Initialization
+
+    /// Creates a new MCP client with no connected servers.
+    ///
+    /// After creating the client, use `addServer(_:)` to connect to MCP servers.
+    public init() {}
+
+    // MARK: - Server Management
+
+    /// Adds and initializes an MCP server.
+    ///
+    /// This method initializes the server connection and registers it with the client.
+    /// The server becomes available for tool and resource queries after this call completes.
+    ///
+    /// - Parameter server: The MCP server to add.
+    /// - Throws: `MCPError` if the server fails to initialize.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let server = HTTPMCPServer(name: "my-server", baseURL: serverURL)
+    /// try await client.addServer(server)
+    /// print("Connected to \(server.name)")
+    /// ```
+    ///
+    /// ## Note
+    /// Adding a server with the same name as an existing server will replace
+    /// the existing server after closing it.
+    public func addServer(_ server: any MCPServer) async throws {
+        // Close existing server with same name if present
+        if let existing = servers[server.name] {
+            try? await existing.close()
+        }
+
+        // Initialize the new server
+        _ = try await server.initialize()
+
+        // Register the server
+        servers[server.name] = server
+
+        // Invalidate the tool cache since we have a new server
+        cacheValid = false
+    }
+
+    /// Removes and closes an MCP server by name.
+    ///
+    /// This method gracefully closes the server connection and removes it
+    /// from the client's registry. Tools from this server will no longer
+    /// be available after this call.
+    ///
+    /// - Parameter name: The name of the server to remove.
+    /// - Throws: `MCPError` if the server fails to close cleanly.
+    ///
+    /// ## Example
+    /// ```swift
+    /// try await client.removeServer(named: "my-server")
+    /// print("Disconnected from my-server")
+    /// ```
+    ///
+    /// ## Note
+    /// If no server with the given name exists, this method completes
+    /// silently without throwing an error.
+    public func removeServer(named name: String) async throws {
+        guard let server = servers[name] else {
+            return
+        }
+
+        // Close the server connection
+        try await server.close()
+
+        // Remove from registry
+        servers.removeValue(forKey: name)
+
+        // Invalidate the cache
+        cacheValid = false
+    }
+
+    // MARK: - Tool Discovery
+
+    /// Returns all tools from all connected servers.
+    ///
+    /// This method aggregates tools from all registered MCP servers. Results
+    /// are cached for performance; subsequent calls return the cached tools
+    /// until the cache is invalidated (by adding or removing servers).
+    ///
+    /// - Returns: An array of all available tools from all connected servers.
+    /// - Throws: `MCPError` if tool discovery fails for any server.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let tools = try await client.getAllTools()
+    /// for tool in tools {
+    ///     print("\(tool.name): \(tool.description)")
+    /// }
+    /// ```
+    ///
+    /// ## Caching Behavior
+    /// Tools are cached after the first call. Use `refreshTools()` or
+    /// `invalidateCache()` to force a refresh.
+    public func getAllTools() async throws -> [any Tool] {
+        // Return cached tools if valid
+        if cacheValid {
+            return Array(toolCache.values)
+        }
+
+        // Clear the cache
+        toolCache.removeAll()
+
+        // Collect tools from all servers
+        for (_, server) in servers {
+            let capabilities = await server.capabilities
+            guard capabilities.tools else {
+                continue
+            }
+
+            let toolDefinitions = try await server.listTools()
+            for definition in toolDefinitions {
+                let bridgedTool = MCPBridgedTool(
+                    definition: definition,
+                    server: server
+                )
+                toolCache[bridgedTool.name] = bridgedTool
+            }
+        }
+
+        // Mark cache as valid
+        cacheValid = true
+
+        return Array(toolCache.values)
+    }
+
+    /// Refreshes the tool cache and returns all available tools.
+    ///
+    /// This method invalidates the current cache and performs a fresh
+    /// discovery of tools from all connected servers. Use this when you
+    /// need to ensure the tool list is up-to-date.
+    ///
+    /// - Returns: An array of all available tools from all connected servers.
+    /// - Throws: `MCPError` if tool discovery fails for any server.
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Force refresh of tools after server-side changes
+    /// let tools = try await client.refreshTools()
+    /// print("Found \(tools.count) tools after refresh")
+    /// ```
+    public func refreshTools() async throws -> [any Tool] {
+        cacheValid = false
+        return try await getAllTools()
+    }
+
+    /// Invalidates the tool cache.
+    ///
+    /// After calling this method, the next call to `getAllTools()` will
+    /// perform a fresh discovery of tools from all servers.
+    ///
+    /// ## Example
+    /// ```swift
+    /// await client.invalidateCache()
+    /// // Next call will refresh from servers
+    /// let tools = try await client.getAllTools()
+    /// ```
+    public func invalidateCache() {
+        cacheValid = false
+    }
+
+    // MARK: - Resource Access
+
+    /// Returns all resources from all connected servers.
+    ///
+    /// This method aggregates resources from all registered MCP servers.
+    /// Unlike tools, resources are not cached since they may change frequently.
+    ///
+    /// - Returns: An array of all available resources from all connected servers.
+    /// - Throws: `MCPError` if resource discovery fails for any server.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let resources = try await client.getAllResources()
+    /// for resource in resources {
+    ///     print("\(resource.name) (\(resource.uri))")
+    /// }
+    /// ```
+    public func getAllResources() async throws -> [MCPResource] {
+        var allResources: [MCPResource] = []
+
+        for (_, server) in servers {
+            let capabilities = await server.capabilities
+            guard capabilities.resources else {
+                continue
+            }
+
+            let resources = try await server.listResources()
+            allResources.append(contentsOf: resources)
+        }
+
+        return allResources
+    }
+
+    /// Reads the content of a resource by URI.
+    ///
+    /// This method searches all connected servers for a resource matching
+    /// the given URI and returns its content. The first server that
+    /// successfully returns the resource content is used.
+    ///
+    /// - Parameter uri: The URI of the resource to read.
+    /// - Returns: The content of the resource.
+    /// - Throws: `MCPError.invalidParams` if the resource is not found on any server.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let content = try await client.readResource(uri: "file:///config.json")
+    /// if let text = content.text {
+    ///     print("Config: \(text)")
+    /// }
+    /// ```
+    public func readResource(uri: String) async throws -> MCPResourceContent {
+        for (_, server) in servers {
+            let capabilities = await server.capabilities
+            guard capabilities.resources else {
+                continue
+            }
+
+            do {
+                let content = try await server.readResource(uri: uri)
+                return content
+            } catch {
+                // Try next server
+                continue
+            }
+        }
+
+        throw MCPError.invalidParams("Resource not found: \(uri)")
+    }
+
+    /// Closes all server connections and clears all state.
+    ///
+    /// This method gracefully closes all connected servers and clears
+    /// the server registry and tool cache. After calling this method,
+    /// the client is ready for new server connections.
+    ///
+    /// - Throws: `MCPError` if any server fails to close cleanly.
+    ///           Note that all servers are attempted to close even if some fail.
+    ///
+    /// ## Example
+    /// ```swift
+    /// defer {
+    ///     try? await client.closeAll()
+    /// }
+    /// // Use client...
+    /// ```
+    public func closeAll() async throws {
+        var lastError: Error?
+
+        // Attempt to close all servers
+        for (_, server) in servers {
+            do {
+                try await server.close()
+            } catch {
+                lastError = error
+            }
+        }
+
+        // Clear all state
+        servers.removeAll()
+        toolCache.removeAll()
+        cacheValid = false
+
+        // Re-throw the last error if any occurred
+        if let error = lastError {
+            throw error
+        }
+    }
+
+    // MARK: Private
+
+    /// Registry of connected MCP servers, keyed by server name.
+    private var servers: [String: any MCPServer] = [:]
+
+    /// Cache of tools from all connected servers, keyed by tool name.
+    private var toolCache: [String: any Tool] = [:]
+
+    /// Whether the tool cache is currently valid.
+    private var cacheValid: Bool = false
+}

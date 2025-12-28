@@ -56,6 +56,22 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// Default: empty
     public var stopSequences: [String]
 
+    /// Extended model settings for fine-grained control.
+    ///
+    /// When set, values in `modelSettings` take precedence over the individual
+    /// `temperature`, `maxTokens`, and `stopSequences` properties above.
+    /// This allows for backward compatibility while enabling advanced configuration.
+    ///
+    /// Example:
+    /// ```swift
+    /// let config = AgentConfiguration.default
+    ///     .modelSettings(ModelSettings.creative
+    ///         .toolChoice(.required)
+    ///         .parallelToolCalls(true)
+    ///     )
+    /// ```
+    public var modelSettings: ModelSettings?
+
     // MARK: - Behavior Settings
 
     /// Whether to stream responses.
@@ -132,6 +148,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - temperature: Model temperature (0.0-2.0). Default: 1.0
     ///   - maxTokens: Maximum tokens per response. Default: nil
     ///   - stopSequences: Generation stop sequences. Default: []
+    ///   - modelSettings: Extended model settings. Default: nil
     ///   - enableStreaming: Enable response streaming. Default: true
     ///   - includeToolCallDetails: Include tool details in results. Default: true
     ///   - stopOnToolError: Stop on first tool error. Default: false
@@ -147,6 +164,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         temperature: Double = 1.0,
         maxTokens: Int? = nil,
         stopSequences: [String] = [],
+        modelSettings: ModelSettings? = nil,
         enableStreaming: Bool = true,
         includeToolCallDetails: Bool = true,
         stopOnToolError: Bool = false,
@@ -156,12 +174,17 @@ public struct AgentConfiguration: Sendable, Equatable {
         previousResponseId: String? = nil,
         autoPreviousResponseId: Bool = false
     ) {
+        precondition(maxIterations > 0, "maxIterations must be positive")
+        precondition(timeout > .zero, "timeout must be positive")
+        precondition((0.0 ... 2.0).contains(temperature), "temperature must be 0.0-2.0")
+
         self.name = name
         self.maxIterations = maxIterations
         self.timeout = timeout
         self.temperature = temperature
         self.maxTokens = maxTokens
         self.stopSequences = stopSequences
+        self.modelSettings = modelSettings
         self.enableStreaming = enableStreaming
         self.includeToolCallDetails = includeToolCallDetails
         self.stopOnToolError = stopOnToolError
@@ -185,6 +208,7 @@ extension AgentConfiguration: CustomStringConvertible {
             temperature: \(temperature),
             maxTokens: \(maxTokens.map(String.init) ?? "nil"),
             stopSequences: \(stopSequences),
+            modelSettings: \(modelSettings.map { String(describing: $0) } ?? "nil"),
             enableStreaming: \(enableStreaming),
             includeToolCallDetails: \(includeToolCallDetails),
             stopOnToolError: \(stopOnToolError),

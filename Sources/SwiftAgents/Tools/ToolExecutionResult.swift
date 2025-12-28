@@ -14,14 +14,25 @@ import Foundation
 ///
 /// Example:
 /// ```swift
-/// // Fail immediately on first error
-/// let executor = ParallelToolExecutor(errorStrategy: .failFast)
+/// let executor = ParallelToolExecutor()
 ///
-/// // Collect all errors and report at end
-/// let executor = ParallelToolExecutor(errorStrategy: .collectErrors)
+/// // Fail immediately on first error (cancels remaining tasks)
+/// let results = try await executor.executeInParallel(
+///     calls, using: registry, agent: agent, context: nil,
+///     errorStrategy: .failFast
+/// )
+///
+/// // Collect all errors and throw composite error at end
+/// let results = try await executor.executeInParallel(
+///     calls, using: registry, agent: agent, context: nil,
+///     errorStrategy: .collectErrors
+/// )
 ///
 /// // Continue execution and include failures in results
-/// let executor = ParallelToolExecutor(errorStrategy: .continueOnError)
+/// let results = try await executor.executeInParallel(
+///     calls, using: registry, agent: agent, context: nil,
+///     errorStrategy: .continueOnError
+/// )
 /// ```
 public enum ParallelExecutionErrorStrategy: Sendable, Equatable {
     /// Throw immediately on first error encountered.
@@ -211,12 +222,12 @@ extension ToolExecutionResult: CustomStringConvertible {
             error.localizedDescription
         }
         return """
-            ToolExecutionResult(\
-            tool: \(toolName), \
-            status: \(status), \
-            duration: \(duration), \
-            result: \(resultDescription))
-            """
+        ToolExecutionResult(\
+        tool: \(toolName), \
+        status: \(status), \
+        duration: \(duration), \
+        result: \(resultDescription))
+        """
     }
 }
 
@@ -233,5 +244,30 @@ extension ToolExecutionResult: CustomDebugStringConvertible {
             timestamp: \(timestamp)
         }
         """
+    }
+}
+
+// MARK: Equatable
+
+extension ToolExecutionResult: Equatable {
+    /// Compares two tool execution results for equality.
+    ///
+    /// Error comparison uses `localizedDescription` since `Error` doesn't conform to `Equatable`.
+    public static func == (lhs: ToolExecutionResult, rhs: ToolExecutionResult) -> Bool {
+        guard lhs.toolName == rhs.toolName,
+              lhs.arguments == rhs.arguments,
+              lhs.duration == rhs.duration,
+              lhs.isSuccess == rhs.isSuccess else {
+            return false
+        }
+
+        switch (lhs.result, rhs.result) {
+        case let (.success(lhsValue), .success(rhsValue)):
+            return lhsValue == rhsValue
+        case let (.failure(lhsError), .failure(rhsError)):
+            return lhsError.localizedDescription == rhsError.localizedDescription
+        default:
+            return false
+        }
     }
 }

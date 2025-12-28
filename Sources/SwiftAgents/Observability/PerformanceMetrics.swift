@@ -246,22 +246,25 @@ public actor PerformanceTracker {
     /// Records a tool execution.
     ///
     /// Call this method after each tool execution or batch of parallel executions.
-    /// For parallel batches, pass the wall-clock duration and `wasParallel: true`.
+    /// For parallel batches, pass the wall-clock duration, `wasParallel: true`, and
+    /// the actual count of tools executed.
     ///
     /// - Parameters:
     ///   - duration: The duration of the tool execution.
     ///   - wasParallel: Whether this was a parallel execution batch.
+    ///   - count: Number of tools executed. Default: 1. For parallel batches,
+    ///     pass the actual number of tools in the batch.
     ///
     /// ```swift
     /// // Single tool
     /// await tracker.recordToolExecution(duration: toolDuration, wasParallel: false)
     ///
-    /// // Parallel batch
-    /// await tracker.recordToolExecution(duration: parallelBatchDuration, wasParallel: true)
+    /// // Parallel batch of 5 tools
+    /// await tracker.recordToolExecution(duration: parallelBatchDuration, wasParallel: true, count: 5)
     /// ```
-    public func recordToolExecution(duration: Duration, wasParallel: Bool) {
+    public func recordToolExecution(duration: Duration, wasParallel: Bool, count: Int = 1) {
         toolTime += duration
-        toolCount += 1
+        toolCount += count
         usedParallel = usedParallel || wasParallel
     }
 

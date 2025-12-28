@@ -43,6 +43,12 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
     /// When the tool call was initiated.
     public let timestamp: Date
 
+    /// Whether the tool execution was successful.
+    public let isSuccess: Bool
+
+    /// Error message if the tool execution failed.
+    public let errorMessage: String?
+
     /// Creates a new tool call record.
     ///
     /// - Parameters:
@@ -51,18 +57,24 @@ public struct ToolCallRecord: Sendable, Equatable, Codable {
     ///   - result: The result returned by the tool. Default: `.null`
     ///   - duration: How long the tool execution took. Default: `.zero`
     ///   - timestamp: When the tool call was initiated. Default: now
+    ///   - isSuccess: Whether the tool execution was successful. Default: `true`
+    ///   - errorMessage: Error message if the tool execution failed. Default: `nil`
     public init(
         toolName: String,
         arguments: [String: SendableValue] = [:],
         result: SendableValue = .null,
         duration: Duration = .zero,
-        timestamp: Date = Date()
+        timestamp: Date = Date(),
+        isSuccess: Bool = true,
+        errorMessage: String? = nil
     ) {
         self.toolName = toolName
         self.arguments = arguments
         self.result = result
         self.duration = duration
         self.timestamp = timestamp
+        self.isSuccess = isSuccess
+        self.errorMessage = errorMessage
     }
 }
 
@@ -161,6 +173,13 @@ public struct AgentResponse: Sendable {
     /// Token usage if available from the underlying model.
     public let usage: TokenUsage?
 
+    /// Number of agent iterations during execution.
+    ///
+    /// An iteration represents one complete reasoning cycle, which may include
+    /// zero or more tool calls. This provides an accurate count rather than
+    /// deriving it from tool call count.
+    public let iterationCount: Int
+
     /// Converts this response to an `AgentResult` for backward compatibility.
     ///
     /// This computed property allows `AgentResponse` to be used in contexts
@@ -196,9 +215,10 @@ public struct AgentResponse: Sendable {
 
             let toolResult = ToolResult(
                 callId: callId,
-                isSuccess: true,
+                isSuccess: record.isSuccess,
                 output: record.result,
-                duration: record.duration
+                duration: record.duration,
+                errorMessage: record.errorMessage
             )
             convertedToolResults.append(toolResult)
         }
@@ -210,7 +230,7 @@ public struct AgentResponse: Sendable {
             output: output,
             toolCalls: convertedToolCalls,
             toolResults: convertedToolResults,
-            iterationCount: max(1, toolCalls.count),
+            iterationCount: iterationCount,
             duration: totalDuration,
             tokenUsage: usage,
             metadata: metadata
@@ -227,6 +247,7 @@ public struct AgentResponse: Sendable {
     ///   - metadata: Additional metadata about the response. Default: `[:]`
     ///   - toolCalls: Tool calls made during execution. Default: `[]`
     ///   - usage: Token usage if available. Default: `nil`
+    ///   - iterationCount: Number of agent iterations. Default: `1`
     public init(
         responseId: String = UUID().uuidString,
         output: String,
@@ -234,7 +255,8 @@ public struct AgentResponse: Sendable {
         timestamp: Date = Date(),
         metadata: [String: SendableValue] = [:],
         toolCalls: [ToolCallRecord] = [],
-        usage: TokenUsage? = nil
+        usage: TokenUsage? = nil,
+        iterationCount: Int = 1
     ) {
         self.responseId = responseId
         self.output = output
@@ -243,6 +265,7 @@ public struct AgentResponse: Sendable {
         self.metadata = metadata
         self.toolCalls = toolCalls
         self.usage = usage
+        self.iterationCount = iterationCount
     }
 }
 
@@ -256,7 +279,8 @@ extension AgentResponse: Equatable {
             lhs.timestamp == rhs.timestamp &&
             lhs.metadata == rhs.metadata &&
             lhs.toolCalls == rhs.toolCalls &&
-            lhs.usage == rhs.usage
+            lhs.usage == rhs.usage &&
+            lhs.iterationCount == rhs.iterationCount
     }
 }
 

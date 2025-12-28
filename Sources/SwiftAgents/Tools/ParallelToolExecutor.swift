@@ -71,6 +71,8 @@ import Foundation
 /// - Execution uses `ContinuousClock` for precise timing measurements
 /// - Failed tools do not block successful ones from completing
 public actor ParallelToolExecutor {
+    // MARK: Public
+
     // MARK: - Initialization
 
     /// Creates a new parallel tool executor.
@@ -238,6 +240,16 @@ public actor ParallelToolExecutor {
         context: AgentContext?,
         errorStrategy: ParallelExecutionErrorStrategy
     ) async throws -> [ToolExecutionResult] {
+        // For failFast, use implementation with true cancellation
+        if case .failFast = errorStrategy {
+            return try await executeWithFailFast(
+                calls,
+                using: registry,
+                agent: agent,
+                context: context
+            )
+        }
+
         // Execute all tools (failures are captured in results)
         let results = try await executeInParallel(
             calls,
@@ -249,11 +261,8 @@ public actor ParallelToolExecutor {
         // Apply error strategy
         switch errorStrategy {
         case .failFast:
-            // Throw on first error found
-            if let firstFailure = results.first(where: { !$0.isSuccess }),
-               let error = firstFailure.error {
-                throw error
-            }
+            // Handled above with true cancellation
+            fatalError("Unreachable: failFast handled above")
 
         case .collectErrors:
             // Collect all errors and throw composite error
@@ -272,6 +281,65 @@ public actor ParallelToolExecutor {
         }
 
         return results
+    }
+
+    // MARK: Private
+
+    // MARK: - Private Methods
+
+    /// Executes tools with true fail-fast cancellation.
+    ///
+    /// Unlike the standard parallel execution, this method cancels all remaining
+    /// tasks immediately when the first failure is detected, saving resources.
+    private func executeWithFailFast(
+        _ calls: [ToolCall],
+        using registry: ToolRegistry,
+        agent: any Agent,
+        context: AgentContext?
+    ) async throws -> [ToolExecutionResult] {
+        guard !calls.isEmpty else { return [] }
+
+        // Validate all tools exist first
+        for call in calls {
+            guard await registry.tool(named: call.toolName) != nil else {
+                throw AgentError.toolNotFound(name: call.toolName)
+            }
+        }
+
+        // Execute with early cancellation on first failure
+        return try await withThrowingTaskGroup(of: (Int, ToolExecutionResult).self) { group in
+            for (index, call) in calls.enumerated() {
+                group.addTask { [registry, agent, context] in
+                    let startTime = ContinuousClock.now
+                    // Let errors propagate for fail-fast behavior
+                    let result = try await registry.execute(
+                        toolNamed: call.toolName,
+                        arguments: call.arguments,
+                        agent: agent,
+                        context: context
+                    )
+                    let duration = ContinuousClock.now - startTime
+                    return (index, ToolExecutionResult.success(
+                        toolName: call.toolName,
+                        arguments: call.arguments,
+                        value: result,
+                        duration: duration
+                    ))
+                }
+            }
+
+            // Collect results, throwing on first error (which cancels remaining tasks)
+            var indexedResults: [(Int, ToolExecutionResult)] = []
+            indexedResults.reserveCapacity(calls.count)
+
+            for try await result in group {
+                indexedResults.append(result)
+            }
+
+            // Sort by index to restore original order
+            indexedResults.sort { $0.0 < $1.0 }
+            return indexedResults.map(\.1)
+        }
     }
 }
 

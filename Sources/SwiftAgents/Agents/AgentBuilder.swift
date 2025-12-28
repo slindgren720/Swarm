@@ -345,6 +345,64 @@ public struct AutoPreviousResponseId: AgentComponent {
     }
 }
 
+// MARK: - ModelSettingsComponent
+
+/// Model settings component for fine-grained model control.
+///
+/// Provides comprehensive control over model behavior including
+/// sampling parameters, tool usage, and advanced options.
+///
+/// Example:
+/// ```swift
+/// let agent = ReActAgent {
+///     Instructions("Precise agent.")
+///     ModelSettingsComponent(.precise
+///         .maxTokens(2000)
+///         .toolChoice(.required)
+///     )
+/// }
+/// ```
+public struct ModelSettingsComponent: AgentComponent {
+    /// The model settings.
+    public let settings: ModelSettings
+
+    /// Creates a model settings component.
+    ///
+    /// - Parameter settings: The model settings to use.
+    public init(_ settings: ModelSettings) {
+        self.settings = settings
+    }
+}
+
+// MARK: - MCPClientComponent
+
+/// MCP client component for dynamic tool discovery.
+///
+/// When provided, tools from connected MCP servers are automatically
+/// registered with the agent, enabling seamless remote tool usage.
+///
+/// Example:
+/// ```swift
+/// let mcpClient = MCPClient()
+/// try await mcpClient.addServer(myMCPServer)
+///
+/// let agent = ReActAgent {
+///     Instructions("MCP-enabled agent.")
+///     MCPClientComponent(mcpClient)
+/// }
+/// ```
+public struct MCPClientComponent: AgentComponent {
+    /// The MCP client for tool discovery.
+    public let client: MCPClient
+
+    /// Creates an MCP client component.
+    ///
+    /// - Parameter client: The MCP client to use for tool discovery.
+    public init(_ client: MCPClient) {
+        self.client = client
+    }
+}
+
 // MARK: - AgentBuilder
 
 /// A result builder for creating agents declaratively.
@@ -397,6 +455,14 @@ public struct AgentBuilder {
 
         /// Whether auto previous response ID tracking is enabled.
         var autoPreviousResponseId: Bool?
+
+        // MARK: - Phase 6 Settings
+
+        /// Extended model settings for fine-grained control.
+        var modelSettings: ModelSettings?
+
+        /// MCP client for dynamic tool discovery.
+        var mcpClient: MCPClient?
     }
 
     /// Builds a block of components.
@@ -435,6 +501,13 @@ public struct AgentBuilder {
             }
             if let autoPreviousResponseId = component.autoPreviousResponseId {
                 result.autoPreviousResponseId = autoPreviousResponseId
+            }
+            // Phase 6 settings
+            if let modelSettings = component.modelSettings {
+                result.modelSettings = modelSettings
+            }
+            if let mcpClient = component.mcpClient {
+                result.mcpClient = mcpClient
             }
         }
         return result
@@ -497,6 +570,11 @@ public struct AgentBuilder {
             result.previousResponseId = previousResponseId.responseId
         case let autoPreviousResponseId as AutoPreviousResponseId:
             result.autoPreviousResponseId = autoPreviousResponseId.enabled
+        // Phase 6 components
+        case let modelSettingsComponent as ModelSettingsComponent:
+            result.modelSettings = modelSettingsComponent.settings
+        case let mcpClientComponent as MCPClientComponent:
+            result.mcpClient = mcpClientComponent.client
         default:
             break
         }
@@ -538,6 +616,10 @@ public extension ReActAgent {
         }
         if let autoPreviousResponseId = components.autoPreviousResponseId {
             config = config.autoPreviousResponseId(autoPreviousResponseId)
+        }
+        // Phase 6: Apply model settings
+        if let modelSettings = components.modelSettings {
+            config = config.modelSettings(modelSettings)
         }
 
         self.init(
