@@ -8,7 +8,7 @@ import Foundation
 // MARK: - MultiProviderError
 
 /// Errors that can occur during MultiProvider operations.
-public enum MultiProviderError: Error, Sendable, LocalizedError {
+public enum MultiProviderError: Error, Sendable, LocalizedError, Equatable {
     /// The prefix is empty or contains only whitespace.
     case emptyPrefix
 
