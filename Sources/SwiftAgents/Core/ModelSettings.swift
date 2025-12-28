@@ -253,13 +253,13 @@ public extension ModelSettings {
     /// ```
     func validate() throws {
         if let temperature {
-            guard temperature >= 0.0, temperature <= 2.0 else {
+            guard temperature.isFinite, temperature >= 0.0, temperature <= 2.0 else {
                 throw ModelSettingsValidationError.invalidTemperature(temperature)
             }
         }
 
         if let topP {
-            guard topP >= 0.0, topP <= 1.0 else {
+            guard topP.isFinite, topP >= 0.0, topP <= 1.0 else {
                 throw ModelSettingsValidationError.invalidTopP(topP)
             }
         }
@@ -277,20 +277,26 @@ public extension ModelSettings {
         }
 
         if let frequencyPenalty {
-            guard frequencyPenalty >= -2.0, frequencyPenalty <= 2.0 else {
+            guard frequencyPenalty.isFinite, frequencyPenalty >= -2.0, frequencyPenalty <= 2.0 else {
                 throw ModelSettingsValidationError.invalidFrequencyPenalty(frequencyPenalty)
             }
         }
 
         if let presencePenalty {
-            guard presencePenalty >= -2.0, presencePenalty <= 2.0 else {
+            guard presencePenalty.isFinite, presencePenalty >= -2.0, presencePenalty <= 2.0 else {
                 throw ModelSettingsValidationError.invalidPresencePenalty(presencePenalty)
             }
         }
 
         if let minP {
-            guard minP >= 0.0, minP <= 1.0 else {
+            guard minP.isFinite, minP >= 0.0, minP <= 1.0 else {
                 throw ModelSettingsValidationError.invalidMinP(minP)
+            }
+        }
+
+        if let repetitionPenalty {
+            guard repetitionPenalty.isFinite, repetitionPenalty >= 0.0 else {
+                throw ModelSettingsValidationError.invalidRepetitionPenalty(repetitionPenalty)
             }
         }
     }
@@ -358,19 +364,21 @@ public enum ModelSettingsValidationError: Error, Sendable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case let .invalidTemperature(value):
-            "Invalid temperature \(value): must be between 0.0 and 2.0"
+            "Invalid temperature \(value): must be a finite number between 0.0 and 2.0"
         case let .invalidTopP(value):
-            "Invalid topP \(value): must be between 0.0 and 1.0"
+            "Invalid topP \(value): must be a finite number between 0.0 and 1.0"
         case let .invalidTopK(value):
             "Invalid topK \(value): must be greater than 0"
         case let .invalidMaxTokens(value):
             "Invalid maxTokens \(value): must be greater than 0"
         case let .invalidFrequencyPenalty(value):
-            "Invalid frequencyPenalty \(value): must be between -2.0 and 2.0"
+            "Invalid frequencyPenalty \(value): must be a finite number between -2.0 and 2.0"
         case let .invalidPresencePenalty(value):
-            "Invalid presencePenalty \(value): must be between -2.0 and 2.0"
+            "Invalid presencePenalty \(value): must be a finite number between -2.0 and 2.0"
         case let .invalidMinP(value):
-            "Invalid minP \(value): must be between 0.0 and 1.0"
+            "Invalid minP \(value): must be a finite number between 0.0 and 1.0"
+        case let .invalidRepetitionPenalty(value):
+            "Invalid repetitionPenalty \(value): must be a finite number >= 0.0"
         }
     }
 
@@ -394,6 +402,9 @@ public enum ModelSettingsValidationError: Error, Sendable, LocalizedError {
 
     /// Min P must be between 0.0 and 1.0.
     case invalidMinP(Double)
+
+    /// Repetition penalty must be a finite number >= 0.0.
+    case invalidRepetitionPenalty(Double)
 }
 
 // MARK: - ToolChoice

@@ -664,7 +664,7 @@ struct ParallelToolExecutorTests {
         )
 
         #expect(results.count == 3)
-        #expect(results.allSatisfy { $0.isSuccess })
+        #expect(results.allSatisfy(\.isSuccess))
         #expect(results[0].value == SendableValue.string("result1"))
         #expect(results[1].value == SendableValue.int(42))
         #expect(results[2].value == SendableValue.bool(true))
@@ -723,7 +723,7 @@ struct ParallelToolExecutorTests {
 
         #expect(results.count == 3)
         #expect(results.allSatisfy { $0.toolName == "reusable" })
-        #expect(results.allSatisfy { $0.isSuccess })
+        #expect(results.allSatisfy(\.isSuccess))
 
         // Verify arguments are preserved for each call
         #expect(results[0].arguments["id"] == .int(1))
@@ -743,5 +743,103 @@ struct ParallelToolExecutorTests {
 
     private func createMockAgent() -> ParallelTestMockAgent {
         ParallelTestMockAgent()
+    }
+}
+
+// MARK: - ParallelToolExecutorCancellationTests
+
+@Suite("ParallelToolExecutor Cancellation Tests")
+struct ParallelToolExecutorCancellationTests {
+    @Test("Parallel execution respects task cancellation")
+    func parallelExecutionRespectsCancellation() async throws {
+        // Create a slow tool that takes 2 seconds
+        let slowTool = DelayedTestTool(name: "slow", delay: .seconds(2), result: .string("completed"))
+        let registry = ToolRegistry()
+        await registry.register([slowTool])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        let calls = [ToolCall(toolName: "slow", arguments: [:])]
+
+        // Start execution in a cancellable task
+        let task = Task {
+            try await executor.executeInParallel(
+                calls,
+                using: registry,
+                agent: agent,
+                context: nil
+            )
+        }
+
+        // Cancel after a short delay
+        try await Task.sleep(for: .milliseconds(50))
+        task.cancel()
+
+        // The task should throw CancellationError
+        do {
+            _ = try await task.value
+            Issue.record("Expected CancellationError to be thrown")
+        } catch is CancellationError {
+            // Expected - cancellation was respected
+        } catch {
+            // Other errors are acceptable if they indicate cancellation
+            #expect(error is CancellationError, "Expected CancellationError, got \(type(of: error))")
+        }
+    }
+
+    @Test("Multiple parallel tools with early cancellation")
+    func multipleToolsWithEarlyCancellation() async throws {
+        // Create multiple slow tools
+        let tool1 = DelayedTestTool(name: "slow1", delay: .seconds(1), result: .string("one"))
+        let tool2 = DelayedTestTool(name: "slow2", delay: .seconds(1), result: .string("two"))
+        let tool3 = DelayedTestTool(name: "slow3", delay: .seconds(1), result: .string("three"))
+        let registry = ToolRegistry()
+        await registry.register([tool1, tool2, tool3])
+        let executor = ParallelToolExecutor()
+        let agent = ParallelTestMockAgent()
+
+        let calls = [
+            ToolCall(toolName: "slow1", arguments: [:]),
+            ToolCall(toolName: "slow2", arguments: [:]),
+            ToolCall(toolName: "slow3", arguments: [:])
+        ]
+
+        let task = Task {
+            try await executor.executeInParallel(
+                calls,
+                using: registry,
+                agent: agent,
+                context: nil
+            )
+        }
+
+        // Cancel almost immediately
+        try await Task.sleep(for: .milliseconds(10))
+        task.cancel()
+
+        // Should complete quickly due to cancellation
+        let startTime = ContinuousClock.now
+        _ = try? await task.value
+        let elapsed = ContinuousClock.now - startTime
+
+        // If cancellation works, this should complete much faster than 1 second
+        #expect(elapsed < .seconds(1), "Cancellation took too long: \(elapsed)")
+    }
+}
+
+// MARK: - DelayedTestTool
+
+/// A test tool that delays for a specified duration before returning
+private struct DelayedTestTool: Tool, Sendable {
+    let name: String
+    let delay: Duration
+    let result: SendableValue
+
+    var description: String { "A tool that delays for \(delay)" }
+    var parameters: [ToolParameter] { [] }
+
+    func execute(arguments _: [String: SendableValue]) async throws -> SendableValue {
+        try await Task.sleep(for: delay)
+        return result
     }
 }

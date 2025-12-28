@@ -135,6 +135,9 @@ public actor ResponseTracker {
     /// print(count)  // 3
     /// ```
     public func recordResponse(_ response: AgentResponse, sessionId: String) {
+        precondition(!sessionId.isEmpty, "ResponseTracker: sessionId cannot be empty")
+        precondition(!response.responseId.isEmpty, "ResponseTracker: response.responseId cannot be empty")
+
         var history = responseHistory[sessionId] ?? []
         history.append(response)
 

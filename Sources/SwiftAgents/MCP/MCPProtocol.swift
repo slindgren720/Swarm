@@ -76,13 +76,20 @@ public struct MCPRequest: Sendable, Codable, Equatable {
     ///
     /// - Parameters:
     ///   - id: A unique identifier for the request. Defaults to a new UUID string.
-    ///   - method: The name of the method to invoke.
+    ///         Must be non-empty per JSON-RPC 2.0 specification.
+    ///   - method: The name of the method to invoke. Must be non-empty.
     ///   - params: Optional parameters for the method. Defaults to `nil`.
+    ///
+    /// - Precondition: `id` must be non-empty.
+    /// - Precondition: `method` must be non-empty.
     public init(
         id: String = UUID().uuidString,
         method: String,
         params: [String: SendableValue]? = nil
     ) {
+        precondition(!id.isEmpty, "MCPRequest: id cannot be empty per JSON-RPC 2.0 specification")
+        precondition(!method.isEmpty, "MCPRequest: method cannot be empty")
+
         jsonrpc = "2.0"
         self.id = id
         self.method = method
@@ -227,22 +234,6 @@ public struct MCPResponse: Sendable, Codable, Equatable {
         self.error = error
     }
 
-    /// Internal initializer for decoding that bypasses the precondition.
-    ///
-    /// Used by `init(from:)` which performs its own validation.
-    private init(
-        jsonrpc: String,
-        id: String,
-        result: SendableValue?,
-        error: MCPErrorObject?,
-        skipValidation _: Bool
-    ) {
-        self.jsonrpc = jsonrpc
-        self.id = id
-        self.result = result
-        self.error = error
-    }
-
     // MARK: - Codable
 
     public init(from decoder: Decoder) throws {
@@ -281,6 +272,22 @@ public struct MCPResponse: Sendable, Codable, Equatable {
         case id
         case result
         case error
+    }
+
+    /// Internal initializer for decoding that bypasses the precondition.
+    ///
+    /// Used by `init(from:)` which performs its own validation.
+    private init(
+        jsonrpc: String,
+        id: String,
+        result: SendableValue?,
+        error: MCPErrorObject?,
+        skipValidation _: Bool
+    ) {
+        self.jsonrpc = jsonrpc
+        self.id = id
+        self.result = result
+        self.error = error
     }
 }
 

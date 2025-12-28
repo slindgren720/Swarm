@@ -403,6 +403,110 @@ struct ModelSettingsValidationTests {
             try settings.validate()
         }
     }
+
+    // MARK: - NaN/Infinity Validation Tests
+
+    @Test("Invalid temperature NaN throws")
+    func invalidTemperatureNaN() {
+        let settings = ModelSettings().temperature(.nan)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid temperature positive infinity throws")
+    func invalidTemperaturePositiveInfinity() {
+        let settings = ModelSettings().temperature(.infinity)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid temperature negative infinity throws")
+    func invalidTemperatureNegativeInfinity() {
+        let settings = ModelSettings().temperature(-.infinity)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid topP NaN throws")
+    func invalidTopPNaN() {
+        let settings = ModelSettings().topP(.nan)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid topP infinity throws")
+    func invalidTopPInfinity() {
+        let settings = ModelSettings().topP(.infinity)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid frequencyPenalty NaN throws")
+    func invalidFrequencyPenaltyNaN() {
+        let settings = ModelSettings().frequencyPenalty(.nan)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid presencePenalty NaN throws")
+    func invalidPresencePenaltyNaN() {
+        let settings = ModelSettings().presencePenalty(.nan)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid minP NaN throws")
+    func invalidMinPNaN() {
+        let settings = ModelSettings().minP(.nan)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    // MARK: - Repetition Penalty Validation Tests
+
+    @Test("Valid repetitionPenalty positive value")
+    func validRepetitionPenalty() throws {
+        let settings = ModelSettings().repetitionPenalty(1.5)
+        try settings.validate()
+    }
+
+    @Test("Valid repetitionPenalty at zero bound")
+    func validRepetitionPenaltyZero() throws {
+        let settings = ModelSettings().repetitionPenalty(0.0)
+        try settings.validate()
+    }
+
+    @Test("Invalid repetitionPenalty negative throws")
+    func invalidRepetitionPenaltyNegative() {
+        let settings = ModelSettings().repetitionPenalty(-0.5)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid repetitionPenalty NaN throws")
+    func invalidRepetitionPenaltyNaN() {
+        let settings = ModelSettings().repetitionPenalty(.nan)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
+
+    @Test("Invalid repetitionPenalty infinity throws")
+    func invalidRepetitionPenaltyInfinity() {
+        let settings = ModelSettings().repetitionPenalty(.infinity)
+        #expect(throws: ModelSettingsValidationError.self) {
+            try settings.validate()
+        }
+    }
 }
 
 // MARK: - ModelSettingsMergeTests

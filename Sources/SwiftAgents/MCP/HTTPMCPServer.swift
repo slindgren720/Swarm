@@ -82,6 +82,14 @@ public actor HTTPMCPServer: MCPServer {
         maxRetries: Int = 3,
         session: URLSession = .shared
     ) {
+        // Security: Enforce HTTPS when API keys are used to prevent credential exposure
+        if apiKey != nil {
+            precondition(
+                url.scheme?.lowercased() == "https",
+                "HTTPMCPServer: HTTPS is required when using API keys to prevent credential exposure. URL scheme: \(url.scheme ?? "nil")"
+            )
+        }
+
         baseURL = url
         self.name = name
         self.apiKey = apiKey
@@ -284,6 +292,9 @@ public actor HTTPMCPServer: MCPServer {
                     throw error
                 }
 
+                // Check for cancellation before sleeping
+                try Task.checkCancellation()
+
                 // Exponential backoff: 1s, 2s, 4s, etc.
                 let delay = pow(2.0, Double(attempt))
                 try await Task.sleep(for: .seconds(delay))
@@ -304,6 +315,9 @@ public actor HTTPMCPServer: MCPServer {
                         data: .dictionary(errorData)
                     )
                 }
+
+                // Check for cancellation before sleeping
+                try Task.checkCancellation()
 
                 let delay = pow(2.0, Double(attempt))
                 try await Task.sleep(for: .seconds(delay))

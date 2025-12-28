@@ -168,11 +168,12 @@ public actor ParallelToolExecutor {
                 }
             }
 
-            // 3. Collect all results
+            // 3. Collect all results with cancellation support
             var indexedResults: [(Int, ToolExecutionResult)] = []
             indexedResults.reserveCapacity(calls.count)
 
             for try await result in group {
+                try Task.checkCancellation()
                 indexedResults.append(result)
             }
 
@@ -333,6 +334,7 @@ public actor ParallelToolExecutor {
             indexedResults.reserveCapacity(calls.count)
 
             for try await result in group {
+                try Task.checkCancellation()
                 indexedResults.append(result)
             }
 
