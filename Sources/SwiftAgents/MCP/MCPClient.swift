@@ -108,8 +108,10 @@ public actor MCPClient {
         // Register the server
         servers[server.name] = server
 
-        // Invalidate the tool cache since we have a new server
+        // Invalidate both caches since we have a new server
         cacheValid = false
+        resourceCacheValid = false
+        resourceCacheTimestamp = nil
     }
 
     /// Removes and closes an MCP server by name.
@@ -141,8 +143,10 @@ public actor MCPClient {
         // Remove from registry
         servers.removeValue(forKey: name)
 
-        // Invalidate the cache
+        // Invalidate both caches
         cacheValid = false
+        resourceCacheValid = false
+        resourceCacheTimestamp = nil
     }
 
     // MARK: - Tool Discovery
@@ -259,22 +263,160 @@ public actor MCPClient {
 
     /// Returns all resources from all connected servers.
     ///
-    /// This method aggregates resources from all registered MCP servers.
-    /// Unlike tools, resources are not cached since they may change frequently.
+    /// This method aggregates resources from all registered MCP servers. Results
+    /// are cached for performance based on the configured TTL; subsequent calls
+    /// return cached resources until the cache expires or is invalidated.
+    ///
+    /// - Returns: An array of all available resources from all connected servers.
+    /// - Throws: `MCPError` if resource discovery fails for any server.
+    ///
+    /// ## Caching Behavior
+    ///
+    /// Resources are cached after the first call for the duration specified by
+    /// the TTL (default: 60 seconds). The cache is automatically invalidated when:
+    /// - The TTL expires
+    /// - A server is added or removed
+    /// - `refreshResources()` or `invalidateResourceCache()` is called
+    ///
+    /// To disable caching entirely, set the TTL to 0 via `setResourceCacheTTL(0)`.
+    /// For indefinite caching, set TTL to `.infinity`.
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Default caching with 60-second TTL
+    /// let resources = try await client.getAllResources()
+    /// print("Found \(resources.count) resources")
+    ///
+    /// // Custom TTL (cache for 5 minutes)
+    /// await client.setResourceCacheTTL(300)
+    /// let cachedResources = try await client.getAllResources()
+    ///
+    /// // Disable caching
+    /// await client.setResourceCacheTTL(0)
+    /// let freshResources = try await client.getAllResources()
+    /// ```
+    ///
+    /// ## Thread Safety
+    /// This method is safe to call concurrently. Concurrent calls during a cache
+    /// refresh will wait for the same refresh task rather than triggering
+    /// duplicate server queries.
+    public func getAllResources() async throws -> [MCPResource] {
+        // Check if caching is disabled (TTL = 0)
+        if resourceCacheTTL == 0 {
+            return try await refreshResourcesInternal()
+        }
+
+        // Check if cache is valid and not expired
+        if resourceCacheValid, let timestamp = resourceCacheTimestamp {
+            let elapsed = Date().timeIntervalSince(timestamp)
+            if elapsed < resourceCacheTTL {
+                return Array(resourceCache.values)
+            }
+            // Cache expired
+            resourceCacheValid = false
+        }
+
+        // Return cached resources if still valid (non-TTL invalidation)
+        if resourceCacheValid {
+            return Array(resourceCache.values)
+        }
+
+        // If a refresh is already in progress, wait for it instead of starting a new one.
+        // This prevents concurrent cache rebuilds (race condition).
+        if let ongoing = resourceRefreshTask {
+            return try await ongoing.value
+        }
+
+        // Start a new refresh task
+        let task = Task<[MCPResource], Error> {
+            try await refreshResourcesInternal()
+        }
+
+        // Store the task for deduplication
+        resourceRefreshTask = task
+
+        do {
+            let result = try await task.value
+            resourceRefreshTask = nil
+            return result
+        } catch {
+            resourceRefreshTask = nil
+            throw error
+        }
+    }
+
+    /// Refreshes the resource cache and returns all available resources.
+    ///
+    /// This method invalidates the current cache and performs a fresh
+    /// discovery of resources from all connected servers. Use this when you
+    /// need to ensure the resource list is up-to-date, regardless of TTL.
     ///
     /// - Returns: An array of all available resources from all connected servers.
     /// - Throws: `MCPError` if resource discovery fails for any server.
     ///
     /// ## Example
     /// ```swift
-    /// let resources = try await client.getAllResources()
-    /// for resource in resources {
-    ///     print("\(resource.name) (\(resource.uri))")
-    /// }
+    /// // Force refresh after server-side changes
+    /// let resources = try await client.refreshResources()
+    /// print("Found \(resources.count) resources after refresh")
     /// ```
-    public func getAllResources() async throws -> [MCPResource] {
-        var allResources: [MCPResource] = []
+    ///
+    /// ## Note
+    /// This method resets the cache timestamp, starting a new TTL period.
+    public func refreshResources() async throws -> [MCPResource] {
+        resourceCacheValid = false
+        resourceCacheTimestamp = nil
+        return try await getAllResources()
+    }
 
+    /// Invalidates the resource cache.
+    ///
+    /// After calling this method, the next call to `getAllResources()` will
+    /// perform a fresh discovery of resources from all servers.
+    ///
+    /// ## Example
+    /// ```swift
+    /// await client.invalidateResourceCache()
+    /// // Next call will refresh from servers
+    /// let resources = try await client.getAllResources()
+    /// ```
+    ///
+    /// ## Note
+    /// This method does not cancel any in-flight refresh operations.
+    /// If a refresh is in progress, the cache will be marked invalid but
+    /// the ongoing refresh will complete normally.
+    public func invalidateResourceCache() {
+        resourceCacheValid = false
+        resourceCacheTimestamp = nil
+    }
+
+    /// Sets the time-to-live (TTL) for the resource cache.
+    ///
+    /// - Parameter ttl: The cache TTL in seconds. Set to 0 to disable caching,
+    ///   or `.infinity` for indefinite caching.
+    ///
+    /// ## Example
+    /// ```swift
+    /// // Cache for 5 minutes
+    /// await client.setResourceCacheTTL(300)
+    ///
+    /// // Disable caching
+    /// await client.setResourceCacheTTL(0)
+    ///
+    /// // Cache indefinitely
+    /// await client.setResourceCacheTTL(.infinity)
+    /// ```
+    public func setResourceCacheTTL(_ ttl: TimeInterval) {
+        resourceCacheTTL = ttl
+    }
+
+    /// Internal method that performs the actual resource discovery and cache update.
+    /// This is called by both `getAllResources()` and `refreshResources()`.
+    private func refreshResourcesInternal() async throws -> [MCPResource] {
+        // Clear the cache
+        resourceCache.removeAll()
+
+        // Collect resources from all servers
         for (_, server) in servers {
             let capabilities = await server.capabilities
             guard capabilities.resources else {
@@ -282,10 +424,17 @@ public actor MCPClient {
             }
 
             let resources = try await server.listResources()
-            allResources.append(contentsOf: resources)
+            for resource in resources {
+                // Use URI as the key since it uniquely identifies the resource
+                resourceCache[resource.uri] = resource
+            }
         }
 
-        return allResources
+        // Mark cache as valid and set timestamp
+        resourceCacheValid = true
+        resourceCacheTimestamp = Date()
+
+        return Array(resourceCache.values)
     }
 
     /// Reads the content of a resource by URI.
@@ -374,6 +523,9 @@ public actor MCPClient {
         servers.removeAll()
         toolCache.removeAll()
         cacheValid = false
+        resourceCache.removeAll()
+        resourceCacheValid = false
+        resourceCacheTimestamp = nil
 
         // Report all errors with detailed context
         if !errors.isEmpty {
@@ -408,4 +560,29 @@ public actor MCPClient {
     /// Used for request deduplication - if a refresh is in progress,
     /// subsequent calls wait for the same task instead of starting new ones.
     private var refreshTask: Task<[any Tool], Error>?
+
+    /// Cache of resources from all connected servers, keyed by resource URI.
+    /// URIs are used as keys since they uniquely identify resources across servers.
+    private var resourceCache: [String: MCPResource] = [:]
+
+    /// Whether the resource cache is currently valid.
+    /// Set to `false` when servers are added/removed or when the cache expires.
+    private var resourceCacheValid: Bool = false
+
+    /// Timestamp when the resource cache was last refreshed.
+    /// Used in conjunction with `resourceCacheTTL` to determine cache expiry.
+    private var resourceCacheTimestamp: Date?
+
+    /// Time-to-live (TTL) for the resource cache in seconds.
+    /// Resources are cached for this duration before automatic invalidation.
+    /// Default: 60 seconds (resources change more frequently than tools).
+    ///
+    /// Set to `0` to disable caching entirely.
+    /// Set to `.infinity` for indefinite caching (until manual invalidation).
+    private var resourceCacheTTL: TimeInterval = 60
+
+    /// Ongoing resource refresh task to prevent concurrent cache rebuilds.
+    /// Used for request deduplication - if a refresh is in progress,
+    /// subsequent calls wait for the same task instead of starting new ones.
+    private var resourceRefreshTask: Task<[MCPResource], Error>?
 }

@@ -5,6 +5,35 @@
 
 import Foundation
 
+// MARK: - SessionMetadata
+
+/// Information about a session's activity.
+///
+/// Contains metadata about when a session was last accessed,
+/// useful for session lifecycle management and cleanup decisions.
+public struct SessionMetadata: Sendable, Equatable {
+    /// The session identifier.
+    public let sessionId: String
+
+    /// The last time the session was accessed (response recorded).
+    public let lastAccessTime: Date
+
+    /// The number of responses currently tracked for this session.
+    public let responseCount: Int
+
+    /// Creates session metadata.
+    ///
+    /// - Parameters:
+    ///   - sessionId: The session identifier.
+    ///   - lastAccessTime: The last access timestamp.
+    ///   - responseCount: The number of responses tracked.
+    public init(sessionId: String, lastAccessTime: Date, responseCount: Int) {
+        self.sessionId = sessionId
+        self.lastAccessTime = lastAccessTime
+        self.responseCount = responseCount
+    }
+}
+
 // MARK: - ResponseTracker
 
 /// Tracks agent responses for conversation continuation.
@@ -360,6 +389,144 @@ public actor ResponseTracker {
     /// ```
     public func getTotalResponseCount() -> Int {
         responseHistory.values.reduce(0) { $0 + $1.count }
+    }
+
+    // MARK: - Session Cleanup
+
+    /// Removes sessions that were last accessed before a specified date.
+    ///
+    /// This is useful for implementing time-based session expiration policies.
+    /// Sessions are considered "accessed" when a response is recorded via
+    /// `recordResponse(_:sessionId:)`.
+    ///
+    /// - Parameter date: Sessions last accessed before this date will be removed.
+    /// - Returns: The number of sessions removed.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Remove sessions older than 7 days
+    /// let sevenDaysAgo = Calendar.current.date(
+    ///     byAdding: .day,
+    ///     value: -7,
+    ///     to: Date()
+    /// )!
+    /// let removed = await tracker.removeSessions(lastAccessedBefore: sevenDaysAgo)
+    /// print("Removed \(removed) inactive sessions")
+    /// ```
+    ///
+    /// ## Privacy Note
+    ///
+    /// This method permanently removes session data. Ensure your application's
+    /// data retention policy allows automatic deletion before using this API.
+    @discardableResult
+    public func removeSessions(lastAccessedBefore date: Date) -> Int {
+        let sessionsToRemove = sessionAccessTimes.filter { $0.value < date }
+
+        for (sessionId, _) in sessionsToRemove {
+            responseHistory.removeValue(forKey: sessionId)
+            sessionAccessTimes.removeValue(forKey: sessionId)
+        }
+
+        return sessionsToRemove.count
+    }
+
+    /// Removes sessions that have not been accessed within a specified time interval.
+    ///
+    /// This is a convenience method for time-based cleanup using relative durations
+    /// instead of absolute dates.
+    ///
+    /// - Parameter interval: Sessions not accessed within this duration will be removed.
+    /// - Returns: The number of sessions removed.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Remove sessions inactive for more than 24 hours
+    /// let removed = await tracker.removeSessions(notAccessedWithin: .hours(24))
+    /// print("Cleaned up \(removed) stale sessions")
+    ///
+    /// // Remove sessions inactive for more than 30 days
+    /// let removed = await tracker.removeSessions(notAccessedWithin: .days(30))
+    /// ```
+    @discardableResult
+    public func removeSessions(notAccessedWithin interval: TimeInterval) -> Int {
+        let threshold = Date().addingTimeInterval(-interval)
+        return removeSessions(lastAccessedBefore: threshold)
+    }
+
+    /// Gets metadata for a specific session.
+    ///
+    /// Returns information about when the session was last accessed and
+    /// how many responses are currently tracked. Useful for implementing
+    /// custom cleanup policies or session monitoring.
+    ///
+    /// - Parameter sessionId: The session identifier.
+    /// - Returns: Session metadata, or `nil` if the session does not exist.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// if let metadata = await tracker.getSessionMetadata(for: "user_123") {
+    ///     print("Session last active: \(metadata.lastAccessTime)")
+    ///     print("Response count: \(metadata.responseCount)")
+    ///
+    ///     // Check if session is stale
+    ///     let hoursSinceAccess = Date().timeIntervalSince(metadata.lastAccessTime) / 3600
+    ///     if hoursSinceAccess > 24 {
+    ///         await tracker.clearHistory(for: "user_123")
+    ///     }
+    /// }
+    /// ```
+    public func getSessionMetadata(for sessionId: String) -> SessionMetadata? {
+        guard let lastAccessTime = sessionAccessTimes[sessionId],
+              let responseCount = responseHistory[sessionId]?.count else {
+            return nil
+        }
+
+        return SessionMetadata(
+            sessionId: sessionId,
+            lastAccessTime: lastAccessTime,
+            responseCount: responseCount
+        )
+    }
+
+    /// Gets metadata for all tracked sessions.
+    ///
+    /// Returns an array of session metadata sorted by last access time
+    /// (most recent first). Useful for administrative dashboards or
+    /// bulk cleanup operations.
+    ///
+    /// - Returns: Array of session metadata for all active sessions.
+    ///   Empty array if no sessions are tracked.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // List all sessions sorted by activity
+    /// let allSessions = await tracker.getAllSessionMetadata()
+    /// for metadata in allSessions {
+    ///     print("\(metadata.sessionId): \(metadata.responseCount) responses, " +
+    ///           "last active \(metadata.lastAccessTime)")
+    /// }
+    ///
+    /// // Find and remove sessions with no recent activity
+    /// let staleThreshold = Date().addingTimeInterval(-7 * 24 * 3600)
+    /// for metadata in allSessions where metadata.lastAccessTime < staleThreshold {
+    ///     await tracker.clearHistory(for: metadata.sessionId)
+    /// }
+    /// ```
+    public func getAllSessionMetadata() -> [SessionMetadata] {
+        sessionAccessTimes.compactMap { sessionId, lastAccessTime in
+            guard let responseCount = responseHistory[sessionId]?.count else {
+                return nil
+            }
+            return SessionMetadata(
+                sessionId: sessionId,
+                lastAccessTime: lastAccessTime,
+                responseCount: responseCount
+            )
+        }.sorted { $0.lastAccessTime > $1.lastAccessTime }
     }
 
     // MARK: Private
