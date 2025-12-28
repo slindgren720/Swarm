@@ -1,0 +1,337 @@
+// ResponseTracker.swift
+// SwiftAgents Framework
+//
+// Tracks agent responses for conversation continuation with bounded storage.
+
+import Foundation
+
+// MARK: - ResponseTracker
+
+/// Tracks agent responses for conversation continuation.
+///
+/// `ResponseTracker` maintains a bounded history of agent responses per session,
+/// enabling conversation continuation across multiple interactions. The tracker
+/// automatically manages memory by trimming oldest responses when limits are exceeded.
+///
+/// ## Bounded Storage
+///
+/// History is automatically trimmed to prevent unbounded memory growth.
+/// When the limit is exceeded, oldest responses are removed first (FIFO).
+/// The default limit is 100 responses per session, configurable at initialization.
+///
+/// ## Session Isolation
+///
+/// Each session maintains its own independent history. Sessions are identified
+/// by string IDs, allowing flexible session management strategies.
+///
+/// ## Thread Safety
+///
+/// `ResponseTracker` is implemented as an actor, ensuring thread-safe access
+/// to response history from concurrent contexts.
+///
+/// ## Example
+///
+/// ```swift
+/// let tracker = ResponseTracker()
+///
+/// // Record responses for a session
+/// await tracker.recordResponse(response1, sessionId: "user_123")
+/// await tracker.recordResponse(response2, sessionId: "user_123")
+///
+/// // Get latest response ID for continuation
+/// if let latestId = await tracker.getLatestResponseId(for: "user_123") {
+///     print("Latest response: \(latestId)")
+/// }
+///
+/// // Retrieve specific response
+/// if let response = await tracker.getResponse(responseId: latestId, sessionId: "user_123") {
+///     print("Output: \(response.output)")
+/// }
+///
+/// // Get recent history
+/// let history = await tracker.getHistory(for: "user_123", limit: 10)
+/// for response in history {
+///     print("\(response.agentName): \(response.output)")
+/// }
+///
+/// // Clear when done
+/// await tracker.clearHistory(for: "user_123")
+/// ```
+///
+/// ## Memory Management
+///
+/// ```swift
+/// // Custom history size for memory-constrained environments
+/// let compactTracker = ResponseTracker(maxHistorySize: 20)
+///
+/// // Record many responses - oldest are automatically removed
+/// for i in 0..<50 {
+///     await compactTracker.recordResponse(responses[i], sessionId: "session")
+/// }
+///
+/// // Only the most recent 20 responses are retained
+/// let count = await compactTracker.getCount(for: "session")
+/// print(count)  // 20
+/// ```
+public actor ResponseTracker {
+    // MARK: Public
+
+    // MARK: - Public Properties
+
+    /// Maximum number of responses to track per session.
+    ///
+    /// When the history exceeds this limit, the oldest responses
+    /// are automatically removed to maintain the bound.
+    nonisolated public let maxHistorySize: Int
+
+    // MARK: - Initialization
+
+    /// Creates a response tracker with the specified history limit.
+    ///
+    /// - Parameter maxHistorySize: Maximum responses to store per session.
+    ///   Must be greater than 0. Default: 100
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Default tracker with 100 response limit
+    /// let defaultTracker = ResponseTracker()
+    ///
+    /// // Compact tracker for memory-constrained environments
+    /// let compactTracker = ResponseTracker(maxHistorySize: 20)
+    ///
+    /// // Large tracker for detailed history needs
+    /// let largeTracker = ResponseTracker(maxHistorySize: 500)
+    /// ```
+    public init(maxHistorySize: Int = 100) {
+        precondition(maxHistorySize > 0, "maxHistorySize must be greater than 0")
+        self.maxHistorySize = maxHistorySize
+    }
+
+    // MARK: - Recording
+
+    /// Records a new response for a session.
+    ///
+    /// If the history exceeds `maxHistorySize` after adding the response,
+    /// the oldest responses are automatically removed to maintain the bound.
+    ///
+    /// - Parameters:
+    ///   - response: The response to record.
+    ///   - sessionId: The session identifier for grouping responses.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let tracker = ResponseTracker(maxHistorySize: 3)
+    ///
+    /// // Record responses
+    /// await tracker.recordResponse(response1, sessionId: "chat")
+    /// await tracker.recordResponse(response2, sessionId: "chat")
+    /// await tracker.recordResponse(response3, sessionId: "chat")
+    /// await tracker.recordResponse(response4, sessionId: "chat")
+    ///
+    /// // Only responses 2, 3, 4 remain (response1 was trimmed)
+    /// let count = await tracker.getCount(for: "chat")
+    /// print(count)  // 3
+    /// ```
+    public func recordResponse(_ response: AgentResponse, sessionId: String) {
+        var history = responseHistory[sessionId] ?? []
+        history.append(response)
+
+        // CRITICAL: Trim oldest responses to prevent unbounded growth
+        if history.count > maxHistorySize {
+            history = Array(history.suffix(maxHistorySize))
+        }
+
+        responseHistory[sessionId] = history
+    }
+
+    // MARK: - Retrieval
+
+    /// Gets the most recent response ID for a session.
+    ///
+    /// This is useful for conversation continuation, where the latest
+    /// response ID can be used to reference the previous context.
+    ///
+    /// - Parameter sessionId: The session identifier.
+    /// - Returns: The response ID of the most recent response, or `nil` if
+    ///   no responses exist for the session.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Check if session has prior context
+    /// if let previousResponseId = await tracker.getLatestResponseId(for: "user_123") {
+    ///     // Continue conversation with reference to previous response
+    ///     let request = AgentRequest(
+    ///         prompt: "What else can you tell me?",
+    ///         previousResponseId: previousResponseId
+    ///     )
+    /// }
+    /// ```
+    public func getLatestResponseId(for sessionId: String) -> String? {
+        responseHistory[sessionId]?.last?.responseId
+    }
+
+    /// Gets a specific response by its ID within a session.
+    ///
+    /// - Parameters:
+    ///   - responseId: The unique identifier of the response to retrieve.
+    ///   - sessionId: The session identifier where the response is stored.
+    /// - Returns: The matching response, or `nil` if not found.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Retrieve a specific response for analysis
+    /// if let response = await tracker.getResponse(
+    ///     responseId: "abc-123",
+    ///     sessionId: "user_456"
+    /// ) {
+    ///     print("Agent: \(response.agentName)")
+    ///     print("Output: \(response.output)")
+    ///     print("Tool calls: \(response.toolCalls.count)")
+    /// }
+    /// ```
+    public func getResponse(responseId: String, sessionId: String) -> AgentResponse? {
+        responseHistory[sessionId]?.first { $0.responseId == responseId }
+    }
+
+    /// Gets the response history for a session.
+    ///
+    /// Responses are returned in chronological order (oldest first).
+    /// An optional limit can be specified to retrieve only the most recent responses.
+    ///
+    /// - Parameters:
+    ///   - sessionId: The session identifier.
+    ///   - limit: Optional maximum number of responses to return.
+    ///     When specified, returns the most recent `limit` responses.
+    ///     When `nil`, returns all responses for the session.
+    /// - Returns: Array of responses in chronological order. Empty if no
+    ///   responses exist for the session.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Get all history
+    /// let allHistory = await tracker.getHistory(for: "session_123")
+    ///
+    /// // Get only last 5 responses
+    /// let recentHistory = await tracker.getHistory(for: "session_123", limit: 5)
+    ///
+    /// // Display conversation
+    /// for response in recentHistory {
+    ///     print("[\(response.agentName)] \(response.output)")
+    /// }
+    /// ```
+    public func getHistory(for sessionId: String, limit: Int? = nil) -> [AgentResponse] {
+        guard let history = responseHistory[sessionId] else {
+            return []
+        }
+
+        if let limit {
+            return Array(history.suffix(limit))
+        }
+        return history
+    }
+
+    // MARK: - Clearing
+
+    /// Clears the response history for a specific session.
+    ///
+    /// This removes all tracked responses for the given session,
+    /// freeing associated memory.
+    ///
+    /// - Parameter sessionId: The session identifier to clear.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Clear history when user logs out
+    /// await tracker.clearHistory(for: "user_session_123")
+    ///
+    /// // Verify cleared
+    /// let count = await tracker.getCount(for: "user_session_123")
+    /// print(count)  // 0
+    /// ```
+    public func clearHistory(for sessionId: String) {
+        responseHistory.removeValue(forKey: sessionId)
+    }
+
+    /// Clears all response history across all sessions.
+    ///
+    /// This is useful for application shutdown or memory pressure situations.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // Clear everything on app termination
+    /// await tracker.clearAllHistory()
+    ///
+    /// // All sessions are now empty
+    /// let sessions = await tracker.getAllSessionIds()
+    /// print(sessions.isEmpty)  // true
+    /// ```
+    public func clearAllHistory() {
+        responseHistory.removeAll()
+    }
+
+    // MARK: - Statistics
+
+    /// Gets the count of responses tracked for a session.
+    ///
+    /// - Parameter sessionId: The session identifier.
+    /// - Returns: Number of responses tracked, or 0 if session has no history.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let count = await tracker.getCount(for: "active_session")
+    /// print("Conversation has \(count) exchanges")
+    /// ```
+    public func getCount(for sessionId: String) -> Int {
+        responseHistory[sessionId]?.count ?? 0
+    }
+
+    /// Gets all session IDs that have recorded history.
+    ///
+    /// This is useful for administrative purposes such as listing
+    /// active sessions or performing bulk operations.
+    ///
+    /// - Returns: Array of session IDs with at least one recorded response.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// // List all active sessions
+    /// let sessions = await tracker.getAllSessionIds()
+    /// for sessionId in sessions {
+    ///     let count = await tracker.getCount(for: sessionId)
+    ///     print("Session \(sessionId): \(count) responses")
+    /// }
+    /// ```
+    public func getAllSessionIds() -> [String] {
+        Array(responseHistory.keys)
+    }
+
+    /// Gets the total count of responses across all sessions.
+    ///
+    /// - Returns: Total number of responses tracked across all sessions.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let total = await tracker.getTotalResponseCount()
+    /// print("Tracking \(total) responses across all sessions")
+    /// ```
+    public func getTotalResponseCount() -> Int {
+        responseHistory.values.reduce(0) { $0 + $1.count }
+    }
+
+    // MARK: Private
+
+    // MARK: - Private Properties
+
+    /// Storage for response history keyed by session ID.
+    private var responseHistory: [String: [AgentResponse]] = [:]
+}

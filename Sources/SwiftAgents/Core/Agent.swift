@@ -84,6 +84,26 @@ public protocol Agent: Sendable {
 
     /// Cancels any ongoing execution.
     func cancel() async
+
+    /// Executes the agent and returns a detailed response with tracking ID.
+    ///
+    /// This method provides enhanced response tracking capabilities compared to
+    /// the standard `run()` method. The returned `AgentResponse` includes:
+    /// - A unique response ID for conversation continuation
+    /// - Detailed tool call records with timing information
+    /// - Full metadata and token usage statistics
+    ///
+    /// - Parameters:
+    ///   - input: The user's input/query.
+    ///   - session: Optional session for conversation history management.
+    ///   - hooks: Optional hooks for lifecycle callbacks.
+    /// - Returns: An `AgentResponse` with unique ID and detailed metadata.
+    /// - Throws: `AgentError` if execution fails, or `GuardrailError` if guardrails trigger.
+    func runWithResponse(
+        _ input: String,
+        session: (any Session)?,
+        hooks: (any RunHooks)?
+    ) async throws -> AgentResponse
 }
 
 // MARK: - Agent Protocol Extensions
@@ -129,6 +149,53 @@ public extension Agent {
     /// Convenience method for stream without session or hooks.
     nonisolated func stream(_ input: String) -> AsyncThrowingStream<AgentEvent, Error> {
         stream(input, session: nil, hooks: nil)
+    }
+}
+
+// MARK: - Agent runWithResponse Extensions
+
+public extension Agent {
+    /// Default implementation of `runWithResponse` using the existing `run()` method.
+    ///
+    /// This creates an `AgentResponse` from the `AgentResult`, generating a unique
+    /// response ID and converting tool results to `ToolCallRecord` format.
+    func runWithResponse(
+        _ input: String,
+        session: (any Session)? = nil,
+        hooks: (any RunHooks)? = nil
+    ) async throws -> AgentResponse {
+        let result = try await run(input, session: session, hooks: hooks)
+
+        // Convert ToolResults to ToolCallRecords
+        let toolCallRecords: [ToolCallRecord] = result.toolResults.map { toolResult in
+            ToolCallRecord(
+                toolName: result.toolCalls.first { $0.id == toolResult.callId }?.toolName ?? "unknown",
+                arguments: result.toolCalls.first { $0.id == toolResult.callId }?.arguments ?? [:],
+                result: toolResult.output,
+                duration: toolResult.duration,
+                timestamp: result.toolCalls.first { $0.id == toolResult.callId }?.timestamp ?? Date()
+            )
+        }
+
+        return AgentResponse(
+            responseId: UUID().uuidString,
+            output: result.output,
+            agentName: configuration.name,
+            timestamp: Date(),
+            metadata: result.metadata,
+            toolCalls: toolCallRecords,
+            usage: result.tokenUsage
+        )
+    }
+
+    /// Convenience method for runWithResponse with hooks but no session.
+    func runWithResponse(_ input: String, hooks: (any RunHooks)?) async throws -> AgentResponse {
+        try await runWithResponse(input, session: nil, hooks: hooks)
+    }
+
+    /// Convenience method for runWithResponse without session or hooks.
+    func runWithResponse(_ input: String) async throws -> AgentResponse {
+        try await runWithResponse(input, session: nil, hooks: nil)
     }
 }
 

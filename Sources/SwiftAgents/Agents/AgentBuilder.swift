@@ -263,7 +263,85 @@ public struct HandoffsComponent: AgentComponent, Sendable {
     public init<each T: Agent>(_ configs: repeat HandoffConfiguration<each T>) {
         var result: [AnyHandoffConfiguration] = []
         repeat result.append(AnyHandoffConfiguration(each configs))
-        self.handoffs = result
+        handoffs = result
+    }
+}
+
+// MARK: - ParallelToolCalls
+
+/// Enables parallel tool call execution.
+///
+/// When enabled, if the agent requests multiple tool calls in a single turn,
+/// they will be executed concurrently using Swift's structured concurrency.
+///
+/// Example:
+/// ```swift
+/// let agent = ReActAgent {
+///     Instructions("Fast parallel agent.")
+///     ParallelToolCalls()
+/// }
+/// ```
+public struct ParallelToolCalls: AgentComponent {
+    /// Whether parallel tool calls are enabled.
+    public let enabled: Bool
+
+    /// Creates a parallel tool calls component.
+    ///
+    /// - Parameter enabled: Whether to enable parallel tool execution. Default: true
+    public init(_ enabled: Bool = true) {
+        self.enabled = enabled
+    }
+}
+
+// MARK: - PreviousResponseId
+
+/// Sets previous response ID for conversation continuation.
+///
+/// Use this to continue a conversation from a specific response.
+/// The agent will use this to maintain context across sessions.
+///
+/// Example:
+/// ```swift
+/// let agent = ReActAgent {
+///     Instructions("Continuation agent.")
+///     PreviousResponseId("resp_abc123")
+/// }
+/// ```
+public struct PreviousResponseId: AgentComponent {
+    /// The previous response ID.
+    public let responseId: String?
+
+    /// Creates a previous response ID component.
+    ///
+    /// - Parameter responseId: The response ID to continue from.
+    public init(_ responseId: String?) {
+        self.responseId = responseId
+    }
+}
+
+// MARK: - AutoPreviousResponseId
+
+/// Enables automatic previous response ID tracking.
+///
+/// When enabled, the agent automatically tracks response IDs
+/// and uses them for conversation continuation within a session.
+///
+/// Example:
+/// ```swift
+/// let agent = ReActAgent {
+///     Instructions("Auto-tracking agent.")
+///     AutoPreviousResponseId()
+/// }
+/// ```
+public struct AutoPreviousResponseId: AgentComponent {
+    /// Whether auto tracking is enabled.
+    public let enabled: Bool
+
+    /// Creates an auto previous response ID component.
+    ///
+    /// - Parameter enabled: Whether to enable auto tracking. Default: true
+    public init(_ enabled: Bool = true) {
+        self.enabled = enabled
     }
 }
 
@@ -308,6 +386,17 @@ public struct AgentBuilder {
         var outputGuardrails: [any OutputGuardrail] = []
         var guardrailRunnerConfiguration: GuardrailRunnerConfiguration?
         var handoffs: [AnyHandoffConfiguration] = []
+
+        // MARK: - Phase 5 Settings
+
+        /// Whether parallel tool calls are enabled.
+        var parallelToolCalls: Bool?
+
+        /// Previous response ID for conversation continuation.
+        var previousResponseId: String?
+
+        /// Whether auto previous response ID tracking is enabled.
+        var autoPreviousResponseId: Bool?
     }
 
     /// Builds a block of components.
@@ -337,6 +426,16 @@ public struct AgentBuilder {
                 result.guardrailRunnerConfiguration = guardrailRunnerConfiguration
             }
             result.handoffs.append(contentsOf: component.handoffs)
+            // Phase 5 settings
+            if let parallelToolCalls = component.parallelToolCalls {
+                result.parallelToolCalls = parallelToolCalls
+            }
+            if let previousResponseId = component.previousResponseId {
+                result.previousResponseId = previousResponseId
+            }
+            if let autoPreviousResponseId = component.autoPreviousResponseId {
+                result.autoPreviousResponseId = autoPreviousResponseId
+            }
         }
         return result
     }
@@ -391,6 +490,13 @@ public struct AgentBuilder {
             result.outputGuardrails.append(contentsOf: outputGuardrails.guardrails)
         case let handoffsComponent as HandoffsComponent:
             result.handoffs.append(contentsOf: handoffsComponent.handoffs)
+        // Phase 5 components
+        case let parallelToolCalls as ParallelToolCalls:
+            result.parallelToolCalls = parallelToolCalls.enabled
+        case let previousResponseId as PreviousResponseId:
+            result.previousResponseId = previousResponseId.responseId
+        case let autoPreviousResponseId as AutoPreviousResponseId:
+            result.autoPreviousResponseId = autoPreviousResponseId.enabled
         default:
             break
         }
@@ -421,10 +527,23 @@ public extension ReActAgent {
     /// - Parameter content: A closure that builds the agent components.
     init(@AgentBuilder _ content: () -> AgentBuilder.Components) {
         let components = content()
+
+        // Build configuration with Phase 5 overrides
+        var config = components.configuration ?? .default
+        if let parallelToolCalls = components.parallelToolCalls {
+            config = config.parallelToolCalls(parallelToolCalls)
+        }
+        if let previousResponseId = components.previousResponseId {
+            config = config.previousResponseId(previousResponseId)
+        }
+        if let autoPreviousResponseId = components.autoPreviousResponseId {
+            config = config.autoPreviousResponseId(autoPreviousResponseId)
+        }
+
         self.init(
             tools: components.tools,
             instructions: components.instructions ?? "",
-            configuration: components.configuration ?? .default,
+            configuration: config,
             memory: components.memory,
             inferenceProvider: components.inferenceProvider,
             tracer: components.tracer,

@@ -84,6 +84,44 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// Default: 50
     public var sessionHistoryLimit: Int?
 
+    // MARK: - Parallel Execution Settings
+
+    /// Whether to execute multiple tool calls in parallel.
+    ///
+    /// When enabled, if the agent requests multiple tool calls in a single turn,
+    /// they will be executed concurrently using Swift's structured concurrency.
+    /// This can significantly improve performance but may increase resource usage.
+    ///
+    /// ## Performance Impact
+    /// - Sequential: Each tool waits for previous to complete
+    /// - Parallel: All tools execute simultaneously
+    /// - Speedup: Up to N× faster (where N = number of tools)
+    ///
+    /// ## Requirements
+    /// - Tools must be independent (no shared mutable state)
+    /// - All tools must be thread-safe
+    ///
+    /// Default: `false`
+    public var parallelToolCalls: Bool
+
+    // MARK: - Response Tracking Settings
+
+    /// Previous response ID for conversation continuation.
+    ///
+    /// Set this to continue a conversation from a specific response.
+    /// The agent will use this to maintain context across sessions.
+    ///
+    /// - Note: Usually set automatically when `autoPreviousResponseId` is enabled
+    public var previousResponseId: String?
+
+    /// Whether to automatically populate previous response ID.
+    ///
+    /// When enabled, the agent automatically tracks response IDs
+    /// and uses them for conversation continuation within a session.
+    ///
+    /// Default: `false`
+    public var autoPreviousResponseId: Bool
+
     // MARK: - Initialization
 
     /// Creates a new agent configuration.
@@ -99,6 +137,9 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - stopOnToolError: Stop on first tool error. Default: false
     ///   - includeReasoning: Include reasoning in events. Default: true
     ///   - sessionHistoryLimit: Maximum session history messages to load. Default: 50
+    ///   - parallelToolCalls: Enable parallel tool execution. Default: false
+    ///   - previousResponseId: Previous response ID for continuation. Default: nil
+    ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
     public init(
         name: String = "Agent",
         maxIterations: Int = 10,
@@ -110,7 +151,10 @@ public struct AgentConfiguration: Sendable, Equatable {
         includeToolCallDetails: Bool = true,
         stopOnToolError: Bool = false,
         includeReasoning: Bool = true,
-        sessionHistoryLimit: Int? = 50
+        sessionHistoryLimit: Int? = 50,
+        parallelToolCalls: Bool = false,
+        previousResponseId: String? = nil,
+        autoPreviousResponseId: Bool = false
     ) {
         self.name = name
         self.maxIterations = maxIterations
@@ -123,6 +167,9 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.stopOnToolError = stopOnToolError
         self.includeReasoning = includeReasoning
         self.sessionHistoryLimit = sessionHistoryLimit
+        self.parallelToolCalls = parallelToolCalls
+        self.previousResponseId = previousResponseId
+        self.autoPreviousResponseId = autoPreviousResponseId
     }
 }
 
@@ -142,7 +189,10 @@ extension AgentConfiguration: CustomStringConvertible {
             includeToolCallDetails: \(includeToolCallDetails),
             stopOnToolError: \(stopOnToolError),
             includeReasoning: \(includeReasoning),
-            sessionHistoryLimit: \(sessionHistoryLimit.map(String.init) ?? "nil")
+            sessionHistoryLimit: \(sessionHistoryLimit.map(String.init) ?? "nil"),
+            parallelToolCalls: \(parallelToolCalls),
+            previousResponseId: \(previousResponseId.map { "\"\($0)\"" } ?? "nil"),
+            autoPreviousResponseId: \(autoPreviousResponseId)
         )
         """
     }
