@@ -19,6 +19,8 @@ SwiftAgents provides the agent orchestration layer on top of SwiftAI SDK, enabli
 - 🔍 **Distributed Tracing** - TraceContext with hierarchical span tracking and task-local propagation
 - 🛠️ **Tool Integration** - Type-safe tool protocol with fluent builder API and built-in utilities
 - 🎭 **Multi-Agent Orchestration** - Supervisor-worker patterns, sequential chains, parallel execution, and intelligent routing
+- 🤝 **Enhanced Handoffs** - Callbacks, input filters, and dynamic enablement for agent-to-agent transfers
+- 🔀 **MultiProvider Routing** - Route inference requests to different providers based on model prefixes
 - 📊 **Observability** - Cross-platform tracing with swift-log, metrics collection, and event streaming
 - 🔄 **Resilience** - Circuit breakers, retry policies with exponential backoff, and fallback chains
 - 🐧 **Cross-Platform** - Full support for Apple platforms (iOS 17+, macOS 14+) and Linux servers
@@ -371,6 +373,112 @@ if let selectedAgent = result1.metadata["selected_agent"]?.stringValue,
    let confidence = result1.metadata["routing_confidence"]?.doubleValue {
     print("Routed to: \(selectedAgent) (confidence: \(confidence))")
 }
+```
+
+### Enhanced Agent Handoffs
+
+Configure how agents hand off control to other agents with callbacks, filters, and enablement checks:
+
+```swift
+import SwiftAgents
+
+// Create agents
+let plannerAgent = PlanAndExecuteAgent.Builder()
+    .instructions("You create execution plans.")
+    .build()
+
+let executorAgent = ReActAgent.Builder()
+    .instructions("You execute tasks.")
+    .build()
+
+// Configure handoffs with callbacks
+let handoffConfig = handoff(
+    to: executorAgent,
+    toolName: "execute_task",
+    toolDescription: "Hand off to the executor agent",
+    onHandoff: { context, data in
+        // Log or validate before handoff
+        print("Handoff: \(data.sourceAgentName) -> \(data.targetAgentName)")
+        await context.set("handoff_time", value: .double(Date().timeIntervalSince1970))
+    },
+    inputFilter: { data in
+        // Transform input before passing to target
+        var modified = data
+        modified.metadata["priority"] = .string("high")
+        return modified
+    },
+    isEnabled: { context, agent in
+        // Dynamically enable/disable handoffs
+        await context.get("planning_complete")?.boolValue ?? false
+    }
+)
+
+// Use in an agent with handoffs
+let coordinator = ReActAgent {
+    Instructions("You coordinate between planning and execution.")
+    HandoffsComponent(handoffConfig)
+}
+```
+
+**Handoff events** for observability:
+
+```swift
+for try await event in agent.stream(input) {
+    switch event {
+    case .handoffStarted(let from, let to, let input):
+        print("Handoff started: \(from) -> \(to)")
+    case .handoffCompletedWithResult(let from, let to, let result):
+        print("Handoff completed: \(result.output)")
+    case .handoffSkipped(let from, let to, let reason):
+        print("Handoff skipped: \(reason)")
+    default:
+        break
+    }
+}
+```
+
+### MultiProvider: Model Routing
+
+Route inference requests to different providers based on model name prefixes:
+
+```swift
+import SwiftAgents
+
+// Create a multi-provider with default fallback
+let multiProvider = MultiProvider(defaultProvider: openRouterProvider)
+
+// Register providers for specific prefixes
+try await multiProvider.register(prefix: "anthropic", provider: anthropicProvider)
+try await multiProvider.register(prefix: "openai", provider: openAIProvider)
+try await multiProvider.register(prefix: "google", provider: googleProvider)
+
+// Set model - prefix determines which provider handles requests
+await multiProvider.setModel("anthropic/claude-3-5-sonnet-20241022")
+
+// This request routes to Anthropic provider
+let response = try await multiProvider.generate(
+    prompt: "Hello, world!",
+    options: .default
+)
+
+// Change model - now routes to OpenAI
+await multiProvider.setModel("openai/gpt-4o")
+let response2 = try await multiProvider.generate(prompt: "Hello!", options: .default)
+
+// Model without prefix uses default provider
+await multiProvider.setModel("gpt-4")  // Routes to openRouterProvider
+```
+
+**Use with agents**:
+
+```swift
+let agent = ReActAgent.Builder()
+    .inferenceProvider(multiProvider)
+    .instructions("You are a helpful assistant.")
+    .build()
+
+// Agent uses the multi-provider for all inference
+let result = try await agent.run("What's 2+2?")
 ```
 
 ### Custom Tools
@@ -1621,8 +1729,10 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 - [x] Additional agent patterns (PlanAndExecuteAgent, ToolCallingAgent) ✅
 - [x] @Agent macro builder generation ✅
 - [x] Swift-style API naming (Memory protocol, method renames) ✅
-- [x] Session management for conversation history ✅ NEW
-- [x] TraceContext for distributed tracing ✅ NEW
+- [x] Session management for conversation history ✅
+- [x] TraceContext for distributed tracing ✅
+- [x] Enhanced agent handoffs with callbacks ✅ NEW
+- [x] MultiProvider for model routing ✅ NEW
 - [ ] Vector memory with embedding support
 - [ ] More built-in tools (web search, file system, etc.)
 - [ ] SwiftData schema versioning for memory persistence
