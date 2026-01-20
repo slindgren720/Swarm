@@ -24,7 +24,7 @@ import Foundation
     /// let result = try await calc.execute(arguments: ["expression": "2 + 3 * 4"])
     /// // result == .double(14.0)
     /// ```
-    public struct CalculatorTool: Tool, Sendable {
+    public struct CalculatorTool: AnyJSONTool, Sendable {
         // MARK: Public
 
         public let name = "calculator"
@@ -106,7 +106,7 @@ import Foundation
 /// let result = try await dt.execute(arguments: ["format": "iso8601"])
 /// // result == .string("2024-01-15T10:30:45Z")
 /// ```
-public struct DateTimeTool: Tool, Sendable {
+public struct DateTimeTool: AnyJSONTool, Sendable {
     public let name = "datetime"
     public let description = "Gets the current date and time in various formats."
 
@@ -198,7 +198,7 @@ public struct DateTimeTool: Tool, Sendable {
 /// ])
 /// // result == .string("hello Swift")
 /// ```
-public struct StringTool: Tool, Sendable {
+public struct StringTool: AnyJSONTool, Sendable {
     public let name = "string"
     public let description = """
     Performs string operations: length, uppercase, lowercase, trim, split, \
@@ -335,6 +335,19 @@ public struct StringTool: Tool, Sendable {
     }
 }
 
+// MARK: - WebSearchTool
+
+/// A tool that performs web searches using the Tavily API.
+///
+/// Requires a Tavily API key.
+public extension WebSearchTool {
+    /// Initializer for use as a built-in tool with an environment-provided key.
+    static func fromEnvironment() -> WebSearchTool {
+        let key = ProcessInfo.processInfo.environment["TAVILY_API_KEY"] ?? ""
+        return WebSearchTool(apiKey: key)
+    }
+}
+
 // MARK: - BuiltInTools
 
 /// Provides access to all built-in tools.
@@ -360,15 +373,18 @@ public enum BuiltInTools {
     /// The string manipulation tool.
     public static let string = StringTool()
 
+    /// The semantic compaction and summarization tool.
+    public static let semanticCompactor = SemanticCompactorTool()
+
     /// All available built-in tools for the current platform.
     ///
-    /// - Apple platforms: calculator, dateTime, string
-    /// - Linux: dateTime, string
-    public static var all: [any Tool] {
+    /// - Apple platforms: calculator, dateTime, string, semanticCompactor
+    /// - Linux: dateTime, string, semanticCompactor
+    public static var all: [any AnyJSONTool] {
+        var tools: [any AnyJSONTool] = [dateTime, string, SemanticCompactorTool()]
         #if canImport(Darwin)
-            [calculator, dateTime, string]
-        #else
-            [dateTime, string]
+        tools.append(calculator)
         #endif
+        return tools
     }
 }
