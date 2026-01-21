@@ -1,9 +1,14 @@
-//: [Previous](@previous)
 
 import Foundation
 import AnyLanguageModel
 import SwiftAgents
 
-var greeting = "Hello, playground"
+struct ResearchAgent: Agent {
+    var instructions: String { "You are a careful research agent." }
 
-//: [Next](@next)
+    var loop: some AgentLoop {
+        Respond()
+    }
+}
+
+var greeting = "Hello, playground"
