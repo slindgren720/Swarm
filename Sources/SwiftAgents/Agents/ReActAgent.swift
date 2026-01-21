@@ -99,8 +99,11 @@ public actor ReActAgent: AgentRuntime {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
 
+        let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
+        let activeMemory = memory ?? AgentEnvironmentValues.current.memory
+
         let tracing = TracingHelper(
-            tracer: tracer,
+            tracer: activeTracer,
             agentName: configuration.name.isEmpty ? "ReActAgent" : configuration.name
         )
         await tracing.traceStart(input: input)
@@ -127,7 +130,7 @@ public actor ReActAgent: AgentRuntime {
             let userMessage = MemoryMessage.user(input)
 
             // Store in memory (for AI context) if available
-            if let mem = memory {
+            if let mem = activeMemory {
                 // Add session history to memory
                 for msg in sessionHistory {
                     await mem.add(msg)
@@ -156,7 +159,7 @@ public actor ReActAgent: AgentRuntime {
             }
 
             // Only store output in memory if validation passed
-            if let mem = memory {
+            if let mem = activeMemory {
                 await mem.add(.assistant(output))
             }
 
@@ -234,7 +237,7 @@ public actor ReActAgent: AgentRuntime {
         // Retrieve relevant context from memory once at the start
         // This enables RAG-style retrieval for VectorMemory or summarization for SummaryMemory
         var memoryContext = ""
-        if let mem = memory {
+        if let mem = memory ?? AgentEnvironmentValues.current.memory {
             // Use a reasonable token limit for context (configurable via maxTokens or default)
             let tokenLimit = configuration.maxTokens ?? 2000
             memoryContext = await mem.context(for: input, tokenLimit: tokenLimit)
@@ -573,26 +576,26 @@ public actor ReActAgent: AgentRuntime {
     // MARK: - Response Generation
 
     private func generateResponse(prompt: String, tools: [ToolDefinition]) async throws -> InferenceResponse {
-        // Use custom inference provider if available
-        if let provider = inferenceProvider {
-            // Avoid tool-calling APIs when no tools are available.
-            // Some providers reject requests with an empty tools array.
-            if tools.isEmpty {
-                let content = try await provider.generate(prompt: prompt, options: configuration.inferenceOptions)
-                return InferenceResponse(content: content, toolCalls: [], finishReason: .completed, usage: nil)
-            }
-
-            return try await provider.generateWithToolCalls(
-                prompt: prompt,
-                tools: tools,
-                options: configuration.inferenceOptions
+        let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
+        guard let provider else {
+            throw AgentError.inferenceProviderUnavailable(
+                reason: "No inference provider configured. Please provide an InferenceProvider."
             )
         }
 
-        // Throw an error indicating an inference provider is required
-        throw AgentError.inferenceProviderUnavailable(
-            reason: "No inference provider configured. Please provide an InferenceProvider."
+        // Avoid tool-calling APIs when no tools are available.
+        // Some providers reject requests with an empty tools array.
+        if tools.isEmpty {
+            let content = try await provider.generate(prompt: prompt, options: configuration.inferenceOptions)
+            return InferenceResponse(content: content, toolCalls: [], finishReason: .completed, usage: nil)
+        }
+
+        return try await provider.generateWithToolCalls(
+            prompt: prompt,
+            tools: tools,
+            options: configuration.inferenceOptions
         )
+
     }
 
     private func formatArguments(_ arguments: [String: SendableValue]) -> String {

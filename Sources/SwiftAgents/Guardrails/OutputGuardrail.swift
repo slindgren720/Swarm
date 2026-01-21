@@ -44,7 +44,7 @@ public typealias OutputValidationHandler = @Sendable (String, any AgentRuntime, 
 ///     print("Output blocked: \(result.message ?? "")")
 /// }
 /// ```
-public protocol OutputGuardrail: Sendable {
+public protocol OutputGuardrail: Guardrail {
     /// The name of this guardrail for identification and logging.
     var name: String { get }
 

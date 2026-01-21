@@ -1089,6 +1089,9 @@ public struct Orchestration: Sendable, OrchestratorProtocol {
             totalIterations += result.iterationCount
 
             for (key, value) in result.metadata {
+                // Preserve last-write-wins metadata at top-level for convenience.
+                // Namespaced copies are also stored for full provenance.
+                allMetadata[key] = value
                 allMetadata["orchestration.step_\(index).\(key)"] = value
             }
 

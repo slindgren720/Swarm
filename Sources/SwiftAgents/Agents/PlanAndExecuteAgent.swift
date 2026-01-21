@@ -324,8 +324,11 @@ public actor PlanAndExecuteAgent: AgentRuntime {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
 
+        let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
+        let activeMemory = memory ?? AgentEnvironmentValues.current.memory
+
         let tracing = TracingHelper(
-            tracer: tracer,
+            tracer: activeTracer,
             agentName: configuration.name.isEmpty ? "PlanAndExecuteAgent" : configuration.name
         )
         await tracing.traceStart(input: input)
@@ -352,7 +355,7 @@ public actor PlanAndExecuteAgent: AgentRuntime {
             let userMessage = MemoryMessage.user(input)
 
             // Store in memory (for AI context) if available
-            if let mem = memory {
+            if let mem = activeMemory {
                 // Add session history to memory
                 for msg in sessionHistory {
                     await mem.add(msg)
@@ -381,7 +384,7 @@ public actor PlanAndExecuteAgent: AgentRuntime {
             }
 
             // Only store output in memory if validation passed
-            if let mem = memory {
+            if let mem = activeMemory {
                 await mem.add(.assistant(output))
             }
 
@@ -516,7 +519,8 @@ public actor PlanAndExecuteAgent: AgentRuntime {
     }
 
     func generateResponse(prompt: String) async throws -> String {
-        if let provider = inferenceProvider {
+        let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
+        if let provider {
             return try await provider.generate(prompt: prompt, options: configuration.inferenceOptions)
         }
 

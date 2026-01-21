@@ -521,6 +521,28 @@ public extension AgentRuntime {
         }
         return ResilientAgent(base: self, timeout: timeout)
     }
+
+    /// Alias for `withRetry(_:)` to match SwiftUI-style modifier naming.
+    func retry(_ policy: RetryPolicy) -> ResilientAgent {
+        withRetry(policy)
+    }
+
+    /// Alias for `withTimeout(_:)` to match SwiftUI-style modifier naming.
+    func timeout(_ duration: Duration) -> ResilientAgent {
+        withTimeout(duration)
+    }
+}
+
+public extension AgentBlueprint {
+    /// Lifts this blueprint into an executable agent and adds retry behavior.
+    func retry(_ policy: RetryPolicy) -> ResilientAgent {
+        BlueprintAgent(self).withRetry(policy)
+    }
+
+    /// Lifts this blueprint into an executable agent and adds timeout protection.
+    func timeout(_ duration: Duration) -> ResilientAgent {
+        BlueprintAgent(self).withTimeout(duration)
+    }
 }
 
 // MARK: - RetryPolicy Fluent Extensions

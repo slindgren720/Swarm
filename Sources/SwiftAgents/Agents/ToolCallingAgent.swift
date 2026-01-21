@@ -101,8 +101,11 @@ public actor Agent: AgentRuntime {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
 
+        let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
+        let activeMemory = memory ?? AgentEnvironmentValues.current.memory
+
         let tracing = TracingHelper(
-            tracer: tracer,
+            tracer: activeTracer,
             agentName: configuration.name.isEmpty ? "Agent" : configuration.name
         )
         await tracing.traceStart(input: input)
@@ -129,7 +132,7 @@ public actor Agent: AgentRuntime {
             let userMessage = MemoryMessage.user(input)
 
             // Store in memory (for AI context) if available
-            if let mem = memory {
+            if let mem = activeMemory {
                 // Add session history to memory
                 for msg in sessionHistory {
                     await mem.add(msg)
@@ -158,7 +161,7 @@ public actor Agent: AgentRuntime {
             }
 
             // Only store output in memory if validation passed
-            if let mem = memory {
+            if let mem = activeMemory {
                 await mem.add(.assistant(output))
             }
 
@@ -259,7 +262,7 @@ public actor Agent: AgentRuntime {
 
         // Retrieve relevant context from memory (enables RAG for VectorMemory)
         var memoryContext = ""
-        if let mem = memory {
+        if let mem = memory ?? AgentEnvironmentValues.current.memory {
             let tokenLimit = configuration.maxTokens ?? 2000
             memoryContext = await mem.context(for: input, tokenLimit: tokenLimit)
         }
@@ -345,7 +348,8 @@ public actor Agent: AgentRuntime {
 
     /// Generates a response without tool calling.
     private func generateWithoutTools(prompt: String, systemPrompt: String, hooks: (any RunHooks)?) async throws -> String {
-        guard let provider = inferenceProvider else {
+        let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
+        guard let provider else {
             throw AgentError.inferenceProviderUnavailable(reason: "No inference provider configured.")
         }
 
@@ -448,7 +452,8 @@ public actor Agent: AgentRuntime {
         systemPrompt: String,
         hooks: (any RunHooks)? = nil
     ) async throws -> InferenceResponse {
-        guard let provider = inferenceProvider else {
+        let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
+        guard let provider else {
             throw AgentError.inferenceProviderUnavailable(
                 reason: "No inference provider configured. Please provide an InferenceProvider."
             )

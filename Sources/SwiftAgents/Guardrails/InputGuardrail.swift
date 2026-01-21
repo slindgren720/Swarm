@@ -34,7 +34,7 @@ public typealias InputValidationHandler = @Sendable (String, AgentContext?) asyn
 ///     }
 /// }
 /// ```
-public protocol InputGuardrail: Sendable {
+public protocol InputGuardrail: Guardrail {
     /// The name of this guardrail for identification and logging.
     var name: String { get }
 

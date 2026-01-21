@@ -86,4 +86,3 @@ struct AgentBlueprintTests {
         #expect(fallback.output == "fallback:technical help")
     }
 }
-

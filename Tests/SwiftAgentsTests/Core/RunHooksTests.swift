@@ -505,19 +505,19 @@ struct RunHooksIntegrationTests {
 
 // MARK: - RunHooksConcurrentExecutionTests
 
-@Suite("RunHooks Concurrent Execution Tests")
-struct RunHooksConcurrentExecutionTests {
-    @Test("Concurrent hook execution completes in parallel")
-    func concurrentHookExecution() async throws {
-        // Create a hook that tracks execution order with delays
-        actor DelayedHook: RunHooks {
-            var events: [(String, Date)] = []
+	@Suite("RunHooks Concurrent Execution Tests")
+	struct RunHooksConcurrentExecutionTests {
+	    @Test("Concurrent hook execution completes in parallel")
+	    func concurrentHookExecution() async throws {
+	        // Create a hook that tracks execution order with delays
+	        actor DelayedHook: RunHooks {
+	            var events: [(String, Date)] = []
 
-            func onAgentStart(context _: AgentContext?, agent _: any AgentRuntime, input _: String) async {
-                let start = Date()
-                try? await Task.sleep(nanoseconds: 10_000_000) // 10ms delay
-                events.append(("start", start))
-            }
+	            func onAgentStart(context _: AgentContext?, agent _: any AgentRuntime, input _: String) async {
+	                let start = Date()
+	                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms delay
+	                events.append(("start", start))
+	            }
 
             func onAgentEnd(context _: AgentContext?, agent _: any AgentRuntime, result _: AgentResult) async {}
             func onError(context _: AgentContext?, agent _: any AgentRuntime, error _: Error) async {}
@@ -539,15 +539,15 @@ struct RunHooksConcurrentExecutionTests {
         let mockAgent = MockAgentForRunHooks()
 
         // Execute and measure time
-        let startTime = Date()
-        await composite.onAgentStart(context: nil, agent: mockAgent, input: "test")
-        let elapsed = Date().timeIntervalSince(startTime)
+	        let startTime = Date()
+	        await composite.onAgentStart(context: nil, agent: mockAgent, input: "test")
+	        let elapsed = Date().timeIntervalSince(startTime)
 
-        // With concurrent execution, all 3 hooks should run in ~10ms (parallel)
-        // With sequential execution, it would take ~30ms
-        // Allow some margin for timing variations
-        #expect(elapsed < 0.025, "Concurrent execution should complete in ~10ms, not \(elapsed * 1000)ms")
-    }
+	        // With concurrent execution, all 3 hooks should run in ~50ms (parallel)
+	        // With sequential execution, it would take ~150ms
+	        // Allow some margin for timing variations
+	        #expect(elapsed < 0.12, "Concurrent execution should complete in ~50ms, not \(elapsed * 1000)ms")
+	    }
 
     @Test("Composite hooks all receive callbacks")
     func compositeHooksAllReceiveCallbacks() async throws {

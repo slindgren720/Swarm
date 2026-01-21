@@ -48,6 +48,7 @@ actor MockSupervisorTestAgent: AgentRuntime {
             }
             do {
                 continuation.yield(.started(input: input))
+                continuation.yield(.thinking(thought: "Thinking about: \(input)"))
                 let result = try await run(input)
                 continuation.yield(.completed(result: result))
                 continuation.finish()

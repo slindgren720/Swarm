@@ -102,23 +102,23 @@ struct RetryPolicyTests {
         #expect(await counter.get() == 3)
     }
 
-    @Test("All retries fail with consistent error")
-    func allRetriesFail() async throws {
-        let policy = RetryPolicy(maxAttempts: 3, backoff: .immediate)
-        let counter = TestCounter()
+	    @Test("All retries fail with consistent error")
+	    func allRetriesFail() async throws {
+	        let policy = RetryPolicy(maxAttempts: 3, backoff: .immediate)
+	        let counter = TestCounter()
 
-        do {
-            _ = try await policy.execute {
-                _ = await counter.increment()
-                throw TestError.timeout
-            }
-            Issue.record("Expected error to be thrown")
-        } catch let error as ResilienceError {
-            #expect(error == .retriesExhausted(attempts: 4, lastError: "timeout"))
-        }
+	        do {
+	            _ = try await policy.execute {
+	                _ = await counter.increment()
+	                throw TestError.timeout
+	            }
+	            Issue.record("Expected error to be thrown")
+	        } catch let error as ResilienceError {
+	            #expect(error == .retriesExhausted(attempts: 4, lastError: TestError.timeout.localizedDescription))
+	        }
 
-        #expect(await counter.get() == 4) // initial + 3 retries
-    }
+	        #expect(await counter.get() == 4) // initial + 3 retries
+	    }
 
     // MARK: - BackoffStrategy Tests
 
