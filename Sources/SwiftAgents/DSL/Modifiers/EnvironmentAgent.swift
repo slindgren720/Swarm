@@ -113,3 +113,18 @@ public extension AgentBlueprint {
         environment(\.memory, memory)
     }
 }
+
+public extension Agent {
+    /// Lifts this agent into an executable runtime and applies an environment value.
+    func environment<V: Sendable>(
+        _ keyPath: WritableKeyPath<AgentEnvironment, V>,
+        _ value: V
+    ) -> EnvironmentAgent {
+        LoopAgent(self).environment(keyPath, value)
+    }
+
+    /// Lifts this agent into an executable runtime and applies environment memory.
+    func memory(_ memory: any Memory) -> EnvironmentAgent {
+        environment(\.memory, memory)
+    }
+}

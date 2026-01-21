@@ -159,6 +159,63 @@ public struct ClosureOutputGuardrail: OutputGuardrail, Sendable {
     private let handler: @Sendable (String, any AgentRuntime, AgentContext?) async throws -> GuardrailResult
 }
 
+// MARK: - OutputGuard
+
+/// A lightweight, closure-based `OutputGuardrail` with a concise API.
+///
+/// Prefer `OutputGuard` over `ClosureOutputGuardrail` for new code.
+///
+/// Examples:
+/// ```swift
+/// // Minimal signature
+/// let guardrail = OutputGuard("block_bad_words") { output in
+///     output.contains("BAD") ? .tripwire(message: "blocked") : .passed()
+/// }
+///
+/// // Context-aware
+/// let strict = OutputGuard("strict_mode") { output, context in
+///     let enabled = await context?.get("strict")?.boolValue ?? false
+///     return enabled && output.contains("forbidden") ? .tripwire(message: "blocked") : .passed()
+/// }
+/// ```
+public struct OutputGuard: OutputGuardrail, Sendable {
+    public let name: String
+
+    public init(
+        _ name: String,
+        _ validate: @escaping @Sendable (String) async throws -> GuardrailResult
+    ) {
+        self.name = name
+        handler = { output, _, _ in
+            try await validate(output)
+        }
+    }
+
+    public init(
+        _ name: String,
+        _ validate: @escaping @Sendable (String, AgentContext?) async throws -> GuardrailResult
+    ) {
+        self.name = name
+        handler = { output, _, context in
+            try await validate(output, context)
+        }
+    }
+
+    public init(
+        _ name: String,
+        _ validate: @escaping OutputValidationHandler
+    ) {
+        self.name = name
+        handler = validate
+    }
+
+    public func validate(_ output: String, agent: any AgentRuntime, context: AgentContext?) async throws -> GuardrailResult {
+        try await handler(output, agent, context)
+    }
+
+    private let handler: OutputValidationHandler
+}
+
 // MARK: - OutputGuardrailBuilder
 
 /// Builder for creating `ClosureOutputGuardrail` instances with a fluent interface.

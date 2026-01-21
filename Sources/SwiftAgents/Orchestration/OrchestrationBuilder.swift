@@ -215,6 +215,11 @@ public struct OrchestrationBuilder {
         AgentStep(BlueprintAgent(blueprint))
     }
 
+    /// Converts a declarative `Agent` into an orchestration step.
+    public static func buildExpression<A: Agent>(_ agent: A) -> OrchestrationStep {
+        LoopAgentStep(agent)
+    }
+
     /// Passes through an existing orchestration step.
     public static func buildExpression(_ step: OrchestrationStep) -> OrchestrationStep {
         step

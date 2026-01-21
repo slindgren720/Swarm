@@ -129,6 +129,39 @@ public struct ClosureInputGuardrail: InputGuardrail, Sendable {
     private let handler: @Sendable (String, AgentContext?) async throws -> GuardrailResult
 }
 
+// MARK: - InputGuard
+
+/// A lightweight, closure-based `InputGuardrail` with a concise API.
+///
+/// Prefer `InputGuard` over `ClosureInputGuardrail` for new code.
+public struct InputGuard: InputGuardrail, Sendable {
+    public let name: String
+
+    public init(
+        _ name: String,
+        _ validate: @escaping @Sendable (String) async throws -> GuardrailResult
+    ) {
+        self.name = name
+        handler = { input, _ in
+            try await validate(input)
+        }
+    }
+
+    public init(
+        _ name: String,
+        _ validate: @escaping @Sendable (String, AgentContext?) async throws -> GuardrailResult
+    ) {
+        self.name = name
+        handler = validate
+    }
+
+    public func validate(_ input: String, context: AgentContext?) async throws -> GuardrailResult {
+        try await handler(input, context)
+    }
+
+    private let handler: InputValidationHandler
+}
+
 // MARK: - InputGuardrailBuilder
 
 /// Builder for creating `ClosureInputGuardrail` instances with a fluent interface.

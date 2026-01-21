@@ -180,6 +180,52 @@ let result = try await supervisor.run("What's 15 × 23?")
 
 > See [docs/orchestration.md](docs/orchestration.md) for chains, parallel execution, and handoffs.
 
+### Declarative Agents (SwiftUI-Style DSL)
+
+Define agents as value types with explicit execution flow:
+
+```swift
+struct CustomerService: Agent {
+    var instructions: String { "You are a helpful customer service agent." }
+
+    var loop: AgentLoop {
+        Guard(.input) {
+            InputGuard("no_secrets") { input in
+                input.contains("password") ? .tripwire(message: "Sensitive data") : .passed()
+            }
+        }
+
+        Routes {
+            When(.contains("billing"), name: "billing") {
+                Billing().temperature(0.2)
+            }
+            Otherwise {
+                GeneralSupport()
+            }
+        }
+
+        Guard(.output) {
+            OutputGuard("no_pii") { output in
+                output.contains("SSN") ? .tripwire(message: "PII detected") : .passed()
+            }
+        }
+    }
+}
+
+struct Billing: Agent {
+    var instructions: String { "You are billing support. Be concise." }
+    var loop: AgentLoop { Respond() }
+}
+
+struct GeneralSupport: Agent {
+    var loop: AgentLoop { Respond() }
+}
+
+let result = try await CustomerService()
+    .environment(\.inferenceProvider, provider)
+    .run("billing help")
+```
+
 ### Session Management
 
 Persist conversation history:
@@ -205,14 +251,14 @@ let persistentSession = try PersistentSession.persistent(sessionId: "user_123")
 Validate inputs and outputs for safety:
 
 ```swift
-let inputGuardrail = ClosureInputGuardrail(name: "ContentFilter") { input, _ in
+let inputGuardrail = InputGuard("ContentFilter") { input in
     if containsProhibitedContent(input) {
         return .tripwire(message: "Prohibited content detected")
     }
     return .passed()
 }
 
-let outputGuardrail = ClosureOutputGuardrail(name: "PIIRedactor") { output, _, _ in
+let outputGuardrail = OutputGuard("PIIRedactor") { output in
     // Redact sensitive info from output
     let redacted = redactSensitiveInfo(output)
     return .passed(metadata: ["redacted": .bool(redacted != output)])

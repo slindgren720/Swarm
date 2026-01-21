@@ -87,7 +87,7 @@ struct SwiftUIDSLIntegrationTests {
     @Test("Chat uses environment inference provider")
     func chatUsesEnvironmentProvider() async throws {
         let provider = MockInferenceProvider(responses: ["Hello from Chat"])
-        let chat = Chat("Be brief.")
+        let chat = ChatAgent("Be brief.")
 
         let result = try await chat
             .environment(\.inferenceProvider, provider)

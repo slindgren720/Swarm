@@ -272,6 +272,35 @@ public func handoff<T: AgentRuntime>(
     )
 }
 
+/// Creates a handoff configuration targeting a declarative `Agent`.
+///
+/// This overload lifts the agent into a `LoopAgent` runtime adapter so it can be
+/// used anywhere `HandoffConfiguration` expects an `AgentRuntime`.
+public func handoff<A: Agent>(
+    to target: A,
+    toolName: String? = nil,
+    toolDescription: String? = nil,
+    onHandoff: OnHandoffCallback? = nil,
+    inputFilter: InputFilterCallback? = nil,
+    isEnabled: IsEnabledCallback? = nil,
+    nestHistory: Bool = false
+) -> HandoffConfiguration<LoopAgent<A>> {
+    let runtime = LoopAgent(target)
+
+    let resolvedToolName = toolName ?? "handoff_to_\(String(describing: A.self).camelCaseToSnakeCase())"
+    let resolvedDescription = toolDescription ?? "Hand off execution to \(target.name)"
+
+    return HandoffConfiguration(
+        targetAgent: runtime,
+        toolNameOverride: resolvedToolName,
+        toolDescription: resolvedDescription,
+        onHandoff: onHandoff,
+        inputFilter: inputFilter,
+        isEnabled: isEnabled,
+        nestHandoffHistory: nestHistory
+    )
+}
+
 // MARK: - AnyHandoffConfiguration
 
 /// A type-erased wrapper for handoff configurations.

@@ -545,6 +545,18 @@ public extension AgentBlueprint {
     }
 }
 
+public extension Agent {
+    /// Lifts this agent into an executable runtime and adds retry behavior.
+    func retry(_ policy: RetryPolicy) -> ResilientAgent {
+        LoopAgent(self).withRetry(policy)
+    }
+
+    /// Lifts this agent into an executable runtime and adds timeout protection.
+    func timeout(_ duration: Duration) -> ResilientAgent {
+        LoopAgent(self).withTimeout(duration)
+    }
+}
+
 // MARK: - RetryPolicy Fluent Extensions
 
 public extension RetryPolicy {
