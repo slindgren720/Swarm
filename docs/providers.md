@@ -26,7 +26,7 @@ public protocol InferenceProvider: Sendable {
     /// Generates a response with potential tool calls.
     func generateWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse
 }
@@ -465,7 +465,7 @@ public actor CustomProvider: InferenceProvider {
 
     public func generateWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         // Build request with tools

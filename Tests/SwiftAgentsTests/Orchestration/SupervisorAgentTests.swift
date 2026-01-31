@@ -10,7 +10,7 @@ import Testing
 // MARK: - MockSupervisorTestAgent
 
 /// Simple mock agent for testing supervisor routing
-actor MockSupervisorTestAgent: Agent {
+actor MockSupervisorTestAgent: AgentRuntime {
     let agentName: String
     let responsePrefix: String
 
@@ -48,6 +48,7 @@ actor MockSupervisorTestAgent: Agent {
             }
             do {
                 continuation.yield(.started(input: input))
+                continuation.yield(.thinking(thought: "Thinking about: \(input)"))
                 let result = try await run(input)
                 continuation.yield(.completed(result: result))
                 continuation.finish()
@@ -471,7 +472,7 @@ struct SupervisorAgentFallbackTests {
     @Test("Handles agent execution errors with fallback")
     func handlesAgentExecutionErrors() async throws {
         // Create an agent that throws an error
-        actor ErrorAgent: Agent {
+        actor ErrorAgent: AgentRuntime {
             nonisolated let tools: [any AnyJSONTool] = []
             nonisolated let instructions: String = "Error agent"
             nonisolated let configuration: AgentConfiguration = .default
@@ -559,7 +560,7 @@ struct SupervisorAgentToolCallTests {
     @Test("Copies tool calls from sub-agent to result")
     func copiesToolCalls() async throws {
         // Create an agent that returns tool calls
-        actor ToolAgent: Agent {
+        actor ToolAgent: AgentRuntime {
             nonisolated let tools: [any AnyJSONTool] = []
             nonisolated let instructions: String = "Tool agent"
             nonisolated let configuration: AgentConfiguration = .default

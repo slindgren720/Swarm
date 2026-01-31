@@ -585,9 +585,9 @@ Memory systems integrate seamlessly with SwiftAgents' agent infrastructure.
 let memory = ConversationMemory(maxMessages: 50)
 
 // Create agent with memory
-let agent = Agent(
-    name: "Assistant",
+let agent = ToolCallingAgent(
     instructions: "You are a helpful assistant",
+    configuration: AgentConfiguration(name: "Assistant"),
     memory: memory
 )
 
@@ -616,8 +616,8 @@ let context = await erasedMemory.context(for: "query", tokenLimit: 1000)
 // Shared memory between agents
 let sharedMemory = ConversationMemory(maxMessages: 100)
 
-let agent1 = Agent(name: "Researcher", memory: sharedMemory)
-let agent2 = Agent(name: "Writer", memory: sharedMemory)
+let agent1 = ToolCallingAgent(configuration: AgentConfiguration(name: "Researcher"), memory: sharedMemory)
+let agent2 = ToolCallingAgent(configuration: AgentConfiguration(name: "Writer"), memory: sharedMemory)
 
 // Both agents can access and contribute to the same memory
 ```

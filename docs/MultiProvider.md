@@ -102,7 +102,7 @@ public nonisolated func stream(
 /// Generates a response with potential tool calls.
 public func generateWithToolCalls(
     prompt: String,
-    tools: [ToolDefinition],
+    tools: [ToolSchema],
     options: InferenceOptions
 ) async throws -> InferenceResponse
 ```
@@ -190,7 +190,7 @@ for try await token in multiProvider.stream(prompt: "Tell me a story", options: 
 ### With Tool Calls
 
 ```swift
-let tools: [ToolDefinition] = [
+let tools: [ToolSchema] = [
     CalculatorTool().definition(),
     DateTimeTool().definition()
 ]

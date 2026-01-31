@@ -8,13 +8,12 @@ Tools are the fundamental building blocks that enable agents to perform actions 
 2. [Tool Protocol](#tool-protocol)
 3. [Creating Tools with @Tool Macro](#creating-tools-with-tool-macro)
 4. [Parameter Types](#parameter-types)
-5. [TypedTool Protocol](#typedtool-protocol)
-6. [Built-in Tools](#built-in-tools)
-7. [ToolRegistry](#toolregistry)
-8. [Adding Tools to Agents](#adding-tools-to-agents)
-9. [Parallel Tool Execution](#parallel-tool-execution)
-10. [Error Handling](#error-handling)
-11. [Advanced Patterns](#advanced-patterns)
+5. [Built-in Tools](#built-in-tools)
+6. [ToolRegistry](#toolregistry)
+7. [Adding Tools to Agents](#adding-tools-to-agents)
+8. [Parallel Tool Execution](#parallel-tool-execution)
+9. [Error Handling](#error-handling)
+10. [Advanced Patterns](#advanced-patterns)
 
 ---
 
@@ -69,6 +68,20 @@ public protocol AnyJSONTool: Sendable {
     var outputGuardrails: [any ToolOutputGuardrail] { get }
 
     func execute(arguments: [String: SendableValue]) async throws -> SendableValue
+}
+```
+
+### ToolSchema
+
+`ToolSchema` is the public, provider-facing description of a tool. It captures the
+tool name, description, and parameters in a stable format that can be shipped to
+model APIs or stored for inspection.
+
+```swift
+public struct ToolSchema: Sendable, Equatable {
+    public let name: String
+    public let description: String
+    public let parameters: [ToolParameter]
 }
 ```
 
@@ -250,76 +263,6 @@ let parameters: [ToolParameter] = [
 
 ---
 
-## TypedTool Protocol
-
-`TypedTool` is a legacy convenience for tools that still use the dynamic `AnyJSONTool` argument ABI but want a strongly-typed output.
-
-For new code, prefer the typed `Tool` protocol (Codable input + typed output) and let SwiftAgents bridge it to `AnyJSONTool` automatically.
-
-```swift
-public protocol TypedTool<Output>: AnyJSONTool {
-    associatedtype Output: Sendable & Encodable
-
-    func executeTyped(arguments: [String: SendableValue]) async throws -> Output
-}
-```
-
-### Using TypedTool
-
-```swift
-struct WeatherData: Sendable, Codable {
-    let temperature: Double
-    let condition: String
-    let location: String
-}
-
-struct TypedWeatherTool: TypedTool {
-    typealias Output = WeatherData
-
-    let name = "weather"
-    let description = "Gets weather data"
-    let parameters: [ToolParameter] = [
-        ToolParameter(name: "location", description: "City name", type: .string)
-    ]
-
-    func executeTyped(arguments: [String: SendableValue]) async throws -> WeatherData {
-        guard let location = arguments["location"]?.stringValue else {
-            throw AgentError.invalidToolArguments(toolName: name, reason: "Missing location")
-        }
-
-        return WeatherData(
-            temperature: 72.0,
-            condition: "Sunny",
-            location: location
-        )
-    }
-}
-```
-
-The `TypedTool` protocol automatically provides the `execute(arguments:)` method by converting your typed output to `SendableValue`.
-
-### Executing Typed Tools
-
-```swift
-let registry = ToolRegistry(tools: [TypedWeatherTool()])
-
-// Standard execution returns SendableValue
-let result = try await registry.execute(
-    toolNamed: "weather",
-    arguments: ["location": .string("Tokyo")]
-)
-
-// Typed execution returns WeatherData directly
-let weatherData = try await registry.executeTyped(
-    TypedWeatherTool.self,
-    toolNamed: "weather",
-    arguments: ["location": .string("Tokyo")]
-)
-print(weatherData.temperature)  // Type-safe access
-```
-
----
-
 ## Built-in Tools
 
 SwiftAgents includes several built-in tools for common operations:
@@ -475,8 +418,8 @@ if let tool = await registry.tool(named: "weather") {
 let names = await registry.toolNames
 print("Available tools: \(names)")
 
-// Get all tool definitions (for LLM prompts)
-let definitions = await registry.definitions
+// Get all tool schemas (for LLM prompts)
+let schemas = await registry.schemas
 
 // Unregister a tool
 await registry.unregister(named: "weather")
@@ -531,6 +474,9 @@ let agent = ToolCallingAgent(
 
 let result = try await agent.run("What's the weather in Tokyo?")
 ```
+
+Typed `Tool` instances can be passed directly; SwiftAgents bridges them to the
+runtime `AnyJSONTool` ABI automatically.
 
 ### Using Builder Pattern
 
@@ -1055,7 +1001,7 @@ final class WeatherToolTests: XCTestCase {
 SwiftAgents provides a comprehensive tools system with:
 
 - **@Tool Macro**: Eliminates boilerplate for rapid development
-- **Type Safety**: Compile-time checking with TypedTool
+- **Type Safety**: Compile-time checking with `Tool` and `Codable` inputs
 - **Built-in Tools**: Ready-to-use tools for common operations
 - **ToolRegistry**: Thread-safe tool management
 - **Parallel Execution**: Concurrent tool execution with structured concurrency

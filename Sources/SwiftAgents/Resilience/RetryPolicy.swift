@@ -38,7 +38,14 @@ extension ResilienceError: LocalizedError {
 
 extension ResilienceError: CustomDebugStringConvertible {
     public var debugDescription: String {
-        "ResilienceError.\(self)"
+        switch self {
+        case let .retriesExhausted(attempts, lastError):
+            "ResilienceError.retriesExhausted(attempts: \(attempts), lastError: \(lastError))"
+        case let .circuitBreakerOpen(serviceName):
+            "ResilienceError.circuitBreakerOpen(serviceName: \(serviceName))"
+        case let .allFallbacksFailed(errors):
+            "ResilienceError.allFallbacksFailed(errors: \(errors))"
+        }
     }
 }
 

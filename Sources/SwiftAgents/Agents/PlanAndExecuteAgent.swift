@@ -245,7 +245,7 @@ extension ExecutionPlan: CustomStringConvertible {
 /// let result = try await agent.run("Find the population of Tokyo and calculate 10% of it")
 /// print(result.output)
 /// ```
-public actor PlanAndExecuteAgent: Agent {
+public actor PlanAndExecuteAgent: AgentRuntime {
     // MARK: Public
 
     // MARK: - Agent Protocol Properties
@@ -310,6 +310,45 @@ public actor PlanAndExecuteAgent: Agent {
         toolRegistry = ToolRegistry(tools: tools)
     }
 
+    /// Creates a new PlanAndExecuteAgent with typed tools.
+    /// - Parameters:
+    ///   - tools: Typed tools available to the agent. Default: []
+    ///   - instructions: System instructions defining agent behavior. Default: ""
+    ///   - configuration: Agent configuration settings. Default: .default
+    ///   - memory: Optional memory system. Default: nil
+    ///   - inferenceProvider: Optional custom inference provider. Default: nil
+    ///   - tracer: Optional tracer for observability. Default: nil
+    ///   - inputGuardrails: Input validation guardrails. Default: []
+    ///   - outputGuardrails: Output validation guardrails. Default: []
+    ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
+    ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: []
+    public init<T: Tool>(
+        tools: [T] = [],
+        instructions: String = "",
+        configuration: AgentConfiguration = .default,
+        memory: (any Memory)? = nil,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        tracer: (any Tracer)? = nil,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffs: [AnyHandoffConfiguration] = []
+    ) {
+        let bridged = tools.map { AnyJSONToolAdapter($0) }
+        self.init(
+            tools: bridged,
+            instructions: instructions,
+            configuration: configuration,
+            memory: memory,
+            inferenceProvider: inferenceProvider,
+            tracer: tracer,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: handoffs
+        )
+    }
+
     // MARK: - Agent Protocol Methods
 
     /// Executes the agent with the given input and returns a result.
@@ -324,8 +363,11 @@ public actor PlanAndExecuteAgent: Agent {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
 
+        let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
+        let activeMemory = memory ?? AgentEnvironmentValues.current.memory
+
         let tracing = TracingHelper(
-            tracer: tracer,
+            tracer: activeTracer,
             agentName: configuration.name.isEmpty ? "PlanAndExecuteAgent" : configuration.name
         )
         await tracing.traceStart(input: input)
@@ -352,7 +394,7 @@ public actor PlanAndExecuteAgent: Agent {
             let userMessage = MemoryMessage.user(input)
 
             // Store in memory (for AI context) if available
-            if let mem = memory {
+            if let mem = activeMemory {
                 // Add session history to memory
                 for msg in sessionHistory {
                     await mem.add(msg)
@@ -381,7 +423,7 @@ public actor PlanAndExecuteAgent: Agent {
             }
 
             // Only store output in memory if validation passed
-            if let mem = memory {
+            if let mem = activeMemory {
                 await mem.add(.assistant(output))
             }
 
@@ -516,7 +558,8 @@ public actor PlanAndExecuteAgent: Agent {
     }
 
     func generateResponse(prompt: String) async throws -> String {
-        if let provider = inferenceProvider {
+        let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
+        if let provider {
             return try await provider.generate(prompt: prompt, options: configuration.inferenceOptions)
         }
 
@@ -662,6 +705,16 @@ public extension PlanAndExecuteAgent {
             return copy
         }
 
+        /// Sets the tools from typed tool instances.
+        /// - Parameter tools: The typed tools to use.
+        /// - Returns: Self for chaining.
+        @discardableResult
+        public func tools<T: Tool>(_ tools: [T]) -> Builder {
+            var copy = self
+            copy._tools = tools.map { AnyJSONToolAdapter($0) }
+            return copy
+        }
+
         /// Adds a tool.
         /// - Parameter tool: The tool to add.
         /// - Returns: Self for chaining.
@@ -669,6 +722,16 @@ public extension PlanAndExecuteAgent {
         public func addTool(_ tool: any AnyJSONTool) -> Builder {
             var copy = self
             copy._tools.append(tool)
+            return copy
+        }
+
+        /// Adds a typed tool.
+        /// - Parameter tool: The typed tool to add.
+        /// - Returns: Self for chaining.
+        @discardableResult
+        public func addTool<T: Tool>(_ tool: T) -> Builder {
+            var copy = self
+            copy._tools.append(AnyJSONToolAdapter(tool))
             return copy
         }
 
@@ -865,7 +928,7 @@ public extension PlanAndExecuteAgent {
     /// ```
     ///
     /// - Parameter content: A closure that builds the agent components.
-    init(@AgentBuilder _ content: () -> AgentBuilder.Components) {
+    init(@LegacyAgentBuilder _ content: () -> LegacyAgentBuilder.Components) {
         let components = content()
         self.init(
             tools: components.tools,

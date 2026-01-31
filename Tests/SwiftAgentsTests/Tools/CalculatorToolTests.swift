@@ -376,7 +376,7 @@ import Testing
         @Test("Tool definition contains correct information")
         func toolDefinition() {
             var calculator = CalculatorTool()
-            let definition = calculator.definition
+            let definition = calculator.schema
 
             #expect(definition.name == "calculator")
             #expect(definition.description == calculator.description)

@@ -175,6 +175,7 @@ public extension AsyncThrowingStream where Element == AgentEvent, Failure == Err
             switch event {
             case .toolCallCompleted,
                  .toolCallFailed,
+                 .toolCallPartial,
                  .toolCallStarted:
                 true
             default:

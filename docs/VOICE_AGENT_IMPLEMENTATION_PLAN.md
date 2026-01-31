@@ -178,7 +178,7 @@ public protocol VoiceTransport: Actor {
 
     /// Registers tools available during the voice session
     /// - Parameter tools: Tool definitions to register
-    func registerTools(_ tools: [ToolDefinition]) async throws
+    func registerTools(_ tools: [ToolSchema]) async throws
 
     /// Sends tool execution results back to the service
     /// - Parameters:
@@ -668,7 +668,7 @@ public actor VoiceAgent: Agent {
 
         // Register tools
         let toolDefinitions = tools.map { tool in
-            ToolDefinition(
+            ToolSchema(
                 name: tool.name,
                 description: tool.description,
                 parameters: tool.parameters
@@ -1090,7 +1090,7 @@ public actor OpenAIRealtimeTransport: VoiceTransport {
         eventContinuation.yield(.audioInterrupted)
     }
 
-    public func registerTools(_ tools: [ToolDefinition]) async throws {
+    public func registerTools(_ tools: [ToolSchema]) async throws {
         // Tools are registered during session update
         // Store for inclusion in session configuration
     }
@@ -1355,7 +1355,7 @@ public actor ElevenLabsTransport: VoiceTransport {
         // Handled automatically when user speaks
     }
 
-    public func registerTools(_ tools: [ToolDefinition]) async throws {
+    public func registerTools(_ tools: [ToolSchema]) async throws {
         // ElevenLabs tools are configured on the agent in the dashboard
         // or via API before conversation starts
     }

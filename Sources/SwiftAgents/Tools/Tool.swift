@@ -55,9 +55,9 @@ public protocol AnyJSONTool: Sendable {
 // MARK: - AnyJSONTool Protocol Extensions
 
 public extension AnyJSONTool {
-    /// Creates a ToolDefinition from this tool.
-    var definition: ToolDefinition {
-        ToolDefinition(from: self)
+    /// Creates a ToolSchema from this tool.
+    var schema: ToolSchema {
+        ToolSchema(name: name, description: description, parameters: parameters)
     }
 
     /// Default input guardrails (none).
@@ -471,42 +471,6 @@ public struct ToolParameter: Sendable, Equatable {
     }
 }
 
-// MARK: - ToolDefinition
-
-/// A definition of a tool that can be included in model prompts.
-///
-/// This is a serializable representation of a tool's interface without
-/// the actual execution logic.
-public struct ToolDefinition: Sendable, Equatable {
-    /// The name of the tool.
-    public let name: String
-
-    /// A description of what the tool does.
-    public let description: String
-
-    /// The parameters this tool accepts.
-    public let parameters: [ToolParameter]
-
-    /// Creates a new tool definition.
-    /// - Parameters:
-    ///   - name: The tool name.
-    ///   - description: The tool description.
-    ///   - parameters: The tool parameters.
-    public init(name: String, description: String, parameters: [ToolParameter]) {
-        self.name = name
-        self.description = description
-        self.parameters = parameters
-    }
-
-    /// Creates a ToolDefinition from an `AnyJSONTool`.
-    /// - Parameter tool: The tool to create a definition from.
-    public init(from tool: any AnyJSONTool) {
-        name = tool.name
-        description = tool.description
-        parameters = tool.parameters
-    }
-}
-
 // MARK: - ToolRegistry
 
 /// A registry for managing available tools.
@@ -533,9 +497,9 @@ public actor ToolRegistry {
         Array(tools.keys)
     }
 
-    /// Gets all tool definitions.
-    public var definitions: [ToolDefinition] {
-        tools.values.map { ToolDefinition(from: $0) }
+    /// Gets all tool schemas.
+    public var schemas: [ToolSchema] {
+        tools.values.map { $0.schema }
     }
 
     /// The number of registered tools.
@@ -554,6 +518,14 @@ public actor ToolRegistry {
         }
     }
 
+    /// Creates a tool registry with the given typed tools.
+    /// - Parameter tools: The initial tools to register.
+    public init<T: Tool>(tools: [T]) {
+        for tool in tools {
+            self.tools[tool.name] = AnyJSONToolAdapter(tool)
+        }
+    }
+
     /// Registers a tool.
     /// - Parameter tool: The tool to register.
     public func register(_ tool: any AnyJSONTool) {
@@ -563,6 +535,14 @@ public actor ToolRegistry {
     /// Registers a typed tool by bridging it to `AnyJSONTool`.
     public func register<T: Tool>(_ tool: T) {
         tools[tool.name] = AnyJSONToolAdapter(tool)
+    }
+
+    /// Registers multiple typed tools.
+    /// - Parameter newTools: The typed tools to register.
+    public func register<T: Tool>(_ newTools: [T]) {
+        for tool in newTools {
+            tools[tool.name] = AnyJSONToolAdapter(tool)
+        }
     }
 
     /// Registers multiple tools.
@@ -607,7 +587,7 @@ public actor ToolRegistry {
     public func execute(
         toolNamed name: String,
         arguments: [String: SendableValue],
-        agent: (any Agent)? = nil,
+        agent: (any AgentRuntime)? = nil,
         context: AgentContext? = nil,
         hooks: (any RunHooks)? = nil
     ) async throws -> SendableValue {

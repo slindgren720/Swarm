@@ -507,10 +507,10 @@ public extension [any AnyJSONTool] {
     }
 }
 
-// MARK: - ToolDefinition Array Extension
+// MARK: - ToolSchema Array Extension
 
-public extension [ToolDefinition] {
-    /// Converts an array of tool definitions to OpenRouter tool definitions.
+public extension [ToolSchema] {
+    /// Converts an array of tool schemas to OpenRouter tool definitions.
     /// - Returns: The array of OpenRouter tool definitions.
     func toOpenRouterToolDefinitions() -> [OpenRouterToolDefinition] {
         map { toolDef in
@@ -535,7 +535,7 @@ public extension [ToolDefinition] {
         }
     }
 
-    /// Converts an array of tool definitions to OpenRouter tools for API requests.
+    /// Converts an array of tool schemas to OpenRouter tools for API requests.
     /// - Returns: The array of OpenRouter tools ready for encoding.
     func toOpenRouterTools() -> [OpenRouterTool] {
         toOpenRouterToolDefinitions().map { $0.toOpenRouterTool() }

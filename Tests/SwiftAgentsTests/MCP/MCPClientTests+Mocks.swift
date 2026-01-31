@@ -12,7 +12,7 @@ import Foundation
 actor MockMCPServer: MCPServer {
     let name: String
     var capabilitiesToReturn: MCPCapabilities
-    var toolsToReturn: [ToolDefinition]
+    var toolsToReturn: [ToolSchema]
     var resourcesToReturn: [MCPResource]
     var resourceContentToReturn: MCPResourceContent?
     var errorToThrow: Error?
@@ -39,7 +39,7 @@ actor MockMCPServer: MCPServer {
     init(
         name: String,
         capabilities: MCPCapabilities = MCPCapabilities(tools: true, resources: true),
-        tools: [ToolDefinition] = [],
+        tools: [ToolSchema] = [],
         resources: [MCPResource] = [],
         resourceContent: MCPResourceContent? = nil,
         errorToThrow: Error? = nil
@@ -67,7 +67,7 @@ actor MockMCPServer: MCPServer {
         closeCalled = true
     }
 
-    func listTools() async throws -> [ToolDefinition] {
+    func listTools() async throws -> [ToolSchema] {
         if let error = errorToThrow {
             throw error
         }
@@ -121,7 +121,7 @@ actor MockMCPServer: MCPServer {
         capabilitiesToReturn = capabilities
     }
 
-    func setTools(_ tools: [ToolDefinition]) {
+    func setTools(_ tools: [ToolSchema]) {
         toolsToReturn = tools
     }
 

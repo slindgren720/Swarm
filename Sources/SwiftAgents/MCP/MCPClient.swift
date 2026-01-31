@@ -195,10 +195,10 @@ public actor MCPClient {
                     continue
                 }
 
-                let toolDefinitions = try await server.listTools()
-                for definition in toolDefinitions {
+                let toolSchemas = try await server.listTools()
+                for definition in toolSchemas {
                     let bridgedTool = MCPBridgedTool(
-                        definition: definition,
+                        schema: definition,
                         server: server
                     )
                     toolCache[bridgedTool.name] = bridgedTool

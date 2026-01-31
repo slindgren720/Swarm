@@ -54,7 +54,7 @@ struct StreamingEventTests {
     }
     
     @Test("ToolCallingAgent stream emits iteration events")
-    func toolCallingAgentStreamEvents() async throws {
+    func agentStreamEvents() async throws {
         // 1. Setup mock provider (ToolCallingAgent uses generateWithToolCalls)
         let mockProvider = MockInferenceProvider()
         await mockProvider.setResponses(["Final answer directly"])

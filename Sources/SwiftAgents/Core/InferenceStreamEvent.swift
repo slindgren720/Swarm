@@ -41,12 +41,12 @@ public protocol InferenceStreamingProvider: Sendable {
     ///
     /// - Parameters:
     ///   - prompt: The input prompt.
-    ///   - tools: The available tool definitions.
+    ///   - tools: The available tool schemas.
     ///   - options: Generation options.
     /// - Returns: An async stream of inference events.
     func streamWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamEvent, Error>
 }

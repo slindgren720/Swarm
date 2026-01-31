@@ -159,12 +159,12 @@ public actor OpenRouterProvider: InferenceProvider, InferenceStreamingProvider {
     /// Streams a response with tool-call deltas for the given prompt.
     /// - Parameters:
     ///   - prompt: The input prompt.
-    ///   - tools: Available tool definitions.
+    ///   - tools: Available tool schemas.
     ///   - options: Generation options.
     /// - Returns: An async stream of inference events.
     nonisolated public func streamWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) -> AsyncThrowingStream<InferenceStreamEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -192,13 +192,13 @@ public actor OpenRouterProvider: InferenceProvider, InferenceStreamingProvider {
     /// Generates a response with potential tool calls.
     /// - Parameters:
     ///   - prompt: The input prompt.
-    ///   - tools: Available tool definitions.
+    ///   - tools: Available tool schemas.
     ///   - options: Generation options.
     /// - Returns: The inference response which may include tool calls.
     /// - Throws: `AgentError` if generation fails.
     public func generateWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -340,7 +340,7 @@ public actor OpenRouterProvider: InferenceProvider, InferenceStreamingProvider {
 
     private func performToolCallStream(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions,
         continuation: AsyncThrowingStream<InferenceStreamEvent, Error>.Continuation
     ) async throws {
@@ -686,7 +686,7 @@ public actor OpenRouterProvider: InferenceProvider, InferenceStreamingProvider {
         prompt: String,
         options: InferenceOptions,
         stream: Bool,
-        tools: [ToolDefinition]? = nil
+        tools: [ToolSchema]? = nil
     ) throws -> URLRequest {
         let url = configuration.baseURL.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)

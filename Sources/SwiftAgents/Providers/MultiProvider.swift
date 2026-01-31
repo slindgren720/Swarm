@@ -199,13 +199,13 @@ public actor MultiProvider: InferenceProvider {
     ///
     /// - Parameters:
     ///   - prompt: The input prompt.
-    ///   - tools: Available tool definitions.
+    ///   - tools: Available tool schemas.
     ///   - options: Generation options.
     /// - Returns: The inference response which may include tool calls.
     /// - Throws: `AgentError` if generation fails.
     public func generateWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         let provider = resolveProvider(for: currentModel)

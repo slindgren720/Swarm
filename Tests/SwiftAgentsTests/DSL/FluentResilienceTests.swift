@@ -352,7 +352,7 @@ actor FailThenSucceedProvider: InferenceProvider {
 
     func generateWithToolCalls(
         prompt: String,
-        tools _: [ToolDefinition],
+        tools _: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         let content = try await generate(prompt: prompt, options: options)
@@ -383,7 +383,7 @@ struct AlwaysFailingProvider: InferenceProvider {
 
     func generateWithToolCalls(
         prompt _: String,
-        tools _: [ToolDefinition],
+        tools _: [ToolSchema],
         options _: InferenceOptions
     ) async throws -> InferenceResponse {
         throw TestResilienceError.permanent
@@ -427,7 +427,7 @@ actor SlowInferenceProvider: InferenceProvider {
 
     func generateWithToolCalls(
         prompt: String,
-        tools _: [ToolDefinition],
+        tools _: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         let content = try await generate(prompt: prompt, options: options)

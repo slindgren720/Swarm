@@ -33,7 +33,7 @@ public struct SwarmAgentProfile: Sendable {
     }
 
     public init?(
-        from agent: some Agent,
+        from agent: some AgentRuntime,
         fallbackProvider: (any InferenceProvider)? = nil
     ) {
         let agentName = SwarmAgentProfile.displayName(for: agent)
@@ -51,7 +51,7 @@ public struct SwarmAgentProfile: Sendable {
         )
     }
 
-    static func displayName(for agent: any Agent) -> String {
+    static func displayName(for agent: any AgentRuntime) -> String {
         let configured = agent.configuration.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !configured.isEmpty {
             return configured
@@ -136,7 +136,7 @@ public actor Swarm {
     // MARK: Public
 
     public init(
-        agents: [any Agent],
+        agents: [any AgentRuntime],
         fallbackProvider: (any InferenceProvider)? = nil
     ) throws {
         var profiles: [String: SwarmAgentProfile] = [:]
@@ -304,19 +304,19 @@ public actor Swarm {
         history: inout [MemoryMessage],
         continuation: AsyncThrowingStream<SwarmStreamChunk, Error>.Continuation
     ) async throws -> (String, [InferenceResponse.ParsedToolCall]?) {
-        let toolDefinitions = buildToolDefinitions(for: profile)
+        let toolSchemas = buildToolSchemas(for: profile)
         let prompt = buildPrompt(with: history, instructions: profile.instructions)
         let options = profile.configuration.inferenceOptions
         let provider = profile.inferenceProvider
 
         if profile.configuration.enableStreaming {
-            if !toolDefinitions.isEmpty, let streamingProvider = provider as? any InferenceStreamingProvider {
+            if !toolSchemas.isEmpty, let streamingProvider = provider as? any InferenceStreamingProvider {
                 var accumulator = ToolCallAccumulator()
                 var content = ""
 
                 for try await event in streamingProvider.streamWithToolCalls(
                     prompt: prompt,
-                    tools: toolDefinitions,
+                    tools: toolSchemas,
                     options: options
                 ) {
                     switch event {
@@ -341,7 +341,7 @@ public actor Swarm {
             }
 
             // Fallback to text-only streaming when tool-call streaming is not supported.
-            if toolDefinitions.isEmpty {
+            if toolSchemas.isEmpty {
                 var content = ""
                 for try await token in provider.stream(prompt: prompt, options: options) {
                     content += token
@@ -352,7 +352,7 @@ public actor Swarm {
         }
 
         // Non-streaming fallback.
-        if toolDefinitions.isEmpty {
+        if toolSchemas.isEmpty {
             let content = try await provider.generate(prompt: prompt, options: options)
             if !content.isEmpty {
                 continuation.yield(SwarmStreamChunk(content: content, agentName: profile.name))
@@ -362,7 +362,7 @@ public actor Swarm {
 
         let response = try await provider.generateWithToolCalls(
             prompt: prompt,
-            tools: toolDefinitions,
+            tools: toolSchemas,
             options: options
         )
         if let content = response.content, !content.isEmpty {
@@ -472,10 +472,10 @@ public actor Swarm {
         return updated
     }
 
-    private func buildToolDefinitions(for profile: SwarmAgentProfile) -> [ToolDefinition] {
-        let toolDefs = profile.tools.map { ToolDefinition(from: $0) }
-        let handoffDefs = buildHandoffEntries(for: profile).values.map { entry in
-            ToolDefinition(
+    private func buildToolSchemas(for profile: SwarmAgentProfile) -> [ToolSchema] {
+        let toolSchemas = profile.tools.map { $0.schema }
+        let handoffSchemas = buildHandoffEntries(for: profile).values.map { entry in
+            ToolSchema(
                 name: entry.config.effectiveToolName,
                 description: entry.config.effectiveToolDescription,
                 parameters: [
@@ -487,7 +487,7 @@ public actor Swarm {
                 ]
             )
         }
-        return toolDefs + handoffDefs
+        return toolSchemas + handoffSchemas
     }
 
     private func buildHandoffEntries(for profile: SwarmAgentProfile) -> [String: HandoffEntry] {
@@ -558,7 +558,7 @@ public actor Swarm {
         return result
     }
 
-    private struct DummyAgent: Agent {
+    private struct DummyAgent: AgentRuntime {
         let profile: SwarmAgentProfile
         nonisolated var tools: [any AnyJSONTool] { profile.tools }
         nonisolated var instructions: String { profile.instructions }

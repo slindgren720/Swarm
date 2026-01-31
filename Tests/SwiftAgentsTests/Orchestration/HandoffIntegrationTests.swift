@@ -217,14 +217,23 @@ struct HandoffCoordinatorIsEnabledTests {
 
         let context = AgentContext(input: "Test")
 
-        await #expect(throws: OrchestrationError.self, performing: {
+        do {
             _ = try await coordinator.executeHandoff(
                 request,
                 context: context,
                 configuration: config,
                 hooks: nil
             )
-        })
+            Issue.record("Expected OrchestrationError.handoffSkipped")
+        } catch let error as OrchestrationError {
+            switch error {
+            case let .handoffSkipped(from, to, _):
+                #expect(from == "source")
+                #expect(to == "target")
+            default:
+                Issue.record("Unexpected OrchestrationError: \(error)")
+            }
+        }
     }
 
     @Test("IsEnabled callback receives correct context and agent")
@@ -360,14 +369,22 @@ struct HandoffCoordinatorErrorHandlingTests {
 
         let context = AgentContext(input: "Test")
 
-        await #expect(throws: OrchestrationError.self, performing: {
+        do {
             _ = try await coordinator.executeHandoff(
                 request,
                 context: context,
                 configuration: nil,
                 hooks: nil
             )
-        })
+            Issue.record("Expected OrchestrationError.agentNotFound")
+        } catch let error as OrchestrationError {
+            switch error {
+            case .agentNotFound:
+                #expect(true)
+            default:
+                Issue.record("Unexpected OrchestrationError: \(error)")
+            }
+        }
     }
 
     @Test("Backward compatible with nil configuration")

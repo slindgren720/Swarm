@@ -1,7 +1,7 @@
 // ToolParameterTests.swift
 // SwiftAgentsTests
 //
-// Comprehensive tests for ToolParameter, ToolParameter.ParameterType, ToolDefinition, and Tool protocol extensions
+// Comprehensive tests for ToolParameter, ToolParameter.ParameterType, ToolSchema, and tool protocol extensions
 
 import Foundation
 @testable import SwiftAgents
@@ -250,29 +250,29 @@ struct ParameterTypeTests {
     }
 }
 
-// MARK: - ToolDefinitionTests
+// MARK: - ToolSchemaTests
 
-@Suite("ToolDefinition Tests")
-struct ToolDefinitionTests {
+@Suite("ToolSchema Tests")
+struct ToolSchemaTests {
     @Test("Direct initialization")
     func directInitialization() {
         let params = [
             ToolParameter(name: "query", description: "Search query", type: .string)
         ]
-        let definition = ToolDefinition(
+        let schema = ToolSchema(
             name: "search",
             description: "Search the web",
             parameters: params
         )
 
-        #expect(definition.name == "search")
-        #expect(definition.description == "Search the web")
-        #expect(definition.parameters.count == 1)
-        #expect(definition.parameters[0].name == "query")
+        #expect(schema.name == "search")
+        #expect(schema.description == "Search the web")
+        #expect(schema.parameters.count == 1)
+        #expect(schema.parameters[0].name == "query")
     }
 
-    @Test("Initialization from Tool protocol")
-    func initializationFromTool() {
+    @Test("Schema derived from AnyJSONTool")
+    func schemaFromAnyJSONTool() {
         let tool = MockTool(
             name: "calculator",
             description: "Performs calculations",
@@ -281,25 +281,25 @@ struct ToolDefinitionTests {
             ]
         )
 
-        let definition = ToolDefinition(from: tool)
+        let schema = tool.schema
 
-        #expect(definition.name == "calculator")
-        #expect(definition.description == "Performs calculations")
-        #expect(definition.parameters.count == 1)
-        #expect(definition.parameters[0].name == "expression")
+        #expect(schema.name == "calculator")
+        #expect(schema.description == "Performs calculations")
+        #expect(schema.parameters.count == 1)
+        #expect(schema.parameters[0].name == "expression")
     }
 
     @Test("Initialization with empty parameters")
     func emptyParametersInitialization() {
-        let definition = ToolDefinition(
+        let schema = ToolSchema(
             name: "getCurrentTime",
             description: "Gets the current time",
             parameters: []
         )
 
-        #expect(definition.name == "getCurrentTime")
-        #expect(definition.description == "Gets the current time")
-        #expect(definition.parameters.isEmpty)
+        #expect(schema.name == "getCurrentTime")
+        #expect(schema.description == "Gets the current time")
+        #expect(schema.parameters.isEmpty)
     }
 
     @Test("Initialization with multiple parameters")
@@ -309,16 +309,16 @@ struct ToolDefinitionTests {
             ToolParameter(name: "units", description: "Temperature units", type: .string, isRequired: false),
             ToolParameter(name: "detailed", description: "Include details", type: .bool, isRequired: false)
         ]
-        let definition = ToolDefinition(
+        let schema = ToolSchema(
             name: "weather",
             description: "Gets weather information",
             parameters: params
         )
 
-        #expect(definition.parameters.count == 3)
-        #expect(definition.parameters[0].name == "location")
-        #expect(definition.parameters[1].name == "units")
-        #expect(definition.parameters[2].name == "detailed")
+        #expect(schema.parameters.count == 3)
+        #expect(schema.parameters[0].name == "location")
+        #expect(schema.parameters[1].name == "units")
+        #expect(schema.parameters[2].name == "detailed")
     }
 
     @Test("Equatable conformance: equal instances")
@@ -326,10 +326,10 @@ struct ToolDefinitionTests {
         let params = [
             ToolParameter(name: "input", description: "Input value", type: .string)
         ]
-        let def1 = ToolDefinition(name: "test", description: "Test tool", parameters: params)
-        let def2 = ToolDefinition(name: "test", description: "Test tool", parameters: params)
+        let schema1 = ToolSchema(name: "test", description: "Test tool", parameters: params)
+        let schema2 = ToolSchema(name: "test", description: "Test tool", parameters: params)
 
-        #expect(def1 == def2)
+        #expect(schema1 == schema2)
     }
 
     @Test("Equatable conformance: different name")
@@ -337,10 +337,10 @@ struct ToolDefinitionTests {
         let params = [
             ToolParameter(name: "input", description: "Input value", type: .string)
         ]
-        let def1 = ToolDefinition(name: "tool1", description: "Test tool", parameters: params)
-        let def2 = ToolDefinition(name: "tool2", description: "Test tool", parameters: params)
+        let schema1 = ToolSchema(name: "tool1", description: "Test tool", parameters: params)
+        let schema2 = ToolSchema(name: "tool2", description: "Test tool", parameters: params)
 
-        #expect(def1 != def2)
+        #expect(schema1 != schema2)
     }
 
     @Test("Equatable conformance: different description")
@@ -348,10 +348,10 @@ struct ToolDefinitionTests {
         let params = [
             ToolParameter(name: "input", description: "Input value", type: .string)
         ]
-        let def1 = ToolDefinition(name: "test", description: "Description 1", parameters: params)
-        let def2 = ToolDefinition(name: "test", description: "Description 2", parameters: params)
+        let schema1 = ToolSchema(name: "test", description: "Description 1", parameters: params)
+        let schema2 = ToolSchema(name: "test", description: "Description 2", parameters: params)
 
-        #expect(def1 != def2)
+        #expect(schema1 != schema2)
     }
 
     @Test("Equatable conformance: different parameters")
@@ -362,10 +362,10 @@ struct ToolDefinitionTests {
         let params2 = [
             ToolParameter(name: "input2", description: "Input value", type: .string)
         ]
-        let def1 = ToolDefinition(name: "test", description: "Test tool", parameters: params1)
-        let def2 = ToolDefinition(name: "test", description: "Test tool", parameters: params2)
+        let schema1 = ToolSchema(name: "test", description: "Test tool", parameters: params1)
+        let schema2 = ToolSchema(name: "test", description: "Test tool", parameters: params2)
 
-        #expect(def1 != def2)
+        #expect(schema1 != schema2)
     }
 }
 
@@ -373,10 +373,10 @@ struct ToolDefinitionTests {
 
 @Suite("Tool Protocol Extension Tests")
 struct ToolProtocolExtensionTests {
-    // MARK: - definition property
+    // MARK: - schema property
 
-    @Test("Tool definition property creates ToolDefinition")
-    func toolDefinitionProperty() {
+    @Test("Tool schema property creates ToolSchema")
+    func toolSchemaProperty() {
         let tool = MockTool(
             name: "testTool",
             description: "A test tool",
@@ -385,12 +385,12 @@ struct ToolProtocolExtensionTests {
             ]
         )
 
-        let definition = tool.definition
+        let schema = tool.schema
 
-        #expect(definition.name == "testTool")
-        #expect(definition.description == "A test tool")
-        #expect(definition.parameters.count == 1)
-        #expect(definition.parameters[0].name == "param1")
+        #expect(schema.name == "testTool")
+        #expect(schema.description == "A test tool")
+        #expect(schema.parameters.count == 1)
+        #expect(schema.parameters[0].name == "param1")
     }
 
     // MARK: - validateArguments

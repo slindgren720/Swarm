@@ -1,9 +1,35 @@
-//: [Previous](@previous)
 
 import Foundation
-import AnyLanguageModel
+import FoundationModels
 import SwiftAgents
+import PlaygroundSupport
 
-var greeting = "Hello, playground"
+PlaygroundSupport.PlaygroundPage.current.needsIndefiniteExecution = true
 
-//: [Next](@next)
+struct ResearchAgent: Agent {
+    var provider: any InferenceProvider {
+        
+    }
+    
+    var instructions: String {
+        "You are a careful research agent."
+    }
+    
+    
+
+    var loop: some AgentLoop {
+        
+        Generate()
+
+    }
+}
+
+
+Task {
+    print("Starting")
+    let response = try! await ResearchAgent().run("Hello").output
+
+    print("Agent Response: ", response)
+    var greeting = "Hello, playground"
+}
+

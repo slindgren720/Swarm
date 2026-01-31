@@ -72,6 +72,13 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// ```
     public var modelSettings: ModelSettings?
 
+    // MARK: - Context Settings
+
+    /// Context budgeting profile for long-running agent workflows.
+    ///
+    /// Default: `.platformDefault`
+    public var contextProfile: ContextProfile
+
     // MARK: - Behavior Settings
 
     /// Whether to stream responses.
@@ -154,6 +161,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - stopOnToolError: Stop on first tool error. Default: false
     ///   - includeReasoning: Include reasoning in events. Default: true
     ///   - sessionHistoryLimit: Maximum session history messages to load. Default: 50
+    ///   - contextProfile: Context budgeting profile. Default: `.platformDefault`
     ///   - parallelToolCalls: Enable parallel tool execution. Default: false
     ///   - previousResponseId: Previous response ID for continuation. Default: nil
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
@@ -165,6 +173,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         maxTokens: Int? = nil,
         stopSequences: [String] = [],
         modelSettings: ModelSettings? = nil,
+        contextProfile: ContextProfile = .platformDefault,
         enableStreaming: Bool = true,
         includeToolCallDetails: Bool = true,
         stopOnToolError: Bool = false,
@@ -185,6 +194,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.maxTokens = maxTokens
         self.stopSequences = stopSequences
         self.modelSettings = modelSettings
+        self.contextProfile = contextProfile
         self.enableStreaming = enableStreaming
         self.includeToolCallDetails = includeToolCallDetails
         self.stopOnToolError = stopOnToolError
@@ -209,6 +219,7 @@ extension AgentConfiguration: CustomStringConvertible {
             maxTokens: \(maxTokens.map(String.init) ?? "nil"),
             stopSequences: \(stopSequences),
             modelSettings: \(modelSettings.map { String(describing: $0) } ?? "nil"),
+            contextProfile: \(contextProfile),
             enableStreaming: \(enableStreaming),
             includeToolCallDetails: \(includeToolCallDetails),
             stopOnToolError: \(stopOnToolError),

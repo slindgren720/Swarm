@@ -42,9 +42,4 @@ public extension Tool {
     var schema: ToolSchema {
         ToolSchema(name: name, description: description, parameters: parameters)
     }
-
-    var definition: ToolDefinition {
-        schema.definition
-    }
 }
-

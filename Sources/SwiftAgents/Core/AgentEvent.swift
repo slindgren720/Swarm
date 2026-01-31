@@ -60,6 +60,11 @@ public enum AgentEvent: Sendable {
     /// Agent is calling a tool (ReAct "Action" step).
     case toolCallStarted(call: ToolCall)
 
+    /// Tool call arguments are being streamed (partial JSON fragments).
+    ///
+    /// This event is emitted before tool execution begins and is intended for live UI.
+    case toolCallPartial(update: PartialToolCallUpdate)
+
     /// Tool execution completed (ReAct "Observation" step).
     case toolCallCompleted(call: ToolCall, result: ToolResult)
 
@@ -339,6 +344,7 @@ extension AgentEvent: Equatable {
         // Tool events - delegated to helper
         case (.toolCallCompleted, .toolCallCompleted),
              (.toolCallFailed, .toolCallFailed),
+             (.toolCallPartial, .toolCallPartial),
              (.toolCallStarted, .toolCallStarted):
             lhs.isEqualToolEvent(rhs)
 
@@ -405,6 +411,8 @@ extension AgentEvent: Equatable {
         switch (self, other) {
         case let (.toolCallStarted(lhsCall), .toolCallStarted(rhsCall)):
             lhsCall == rhsCall
+        case let (.toolCallPartial(lhsUpdate), .toolCallPartial(rhsUpdate)):
+            lhsUpdate == rhsUpdate
         case let (.toolCallCompleted(lhsCall, lhsResult), .toolCallCompleted(rhsCall, rhsResult)):
             lhsCall == rhsCall && lhsResult == rhsResult
         case let (.toolCallFailed(lhsCall, lhsError), .toolCallFailed(rhsCall, rhsError)):

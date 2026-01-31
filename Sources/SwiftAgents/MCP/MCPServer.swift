@@ -165,7 +165,7 @@ public protocol MCPServer: Sendable {
     /// Returns the definitions of all tools that can be called via `callTool()`.
     /// Check `capabilities.tools` before calling this method.
     ///
-    /// - Returns: An array of tool definitions describing available tools.
+    /// - Returns: An array of tool schemas describing available tools.
     /// - Throws: `MCPError.methodNotFound` if the server does not support tools.
     ///           `MCPError.internalError` if an error occurs while listing tools.
     ///
@@ -179,7 +179,7 @@ public protocol MCPServer: Sendable {
     ///     }
     /// }
     /// ```
-    func listTools() async throws -> [ToolDefinition]
+    func listTools() async throws -> [ToolSchema]
 
     /// Calls a tool on the MCP server with the specified arguments.
     ///

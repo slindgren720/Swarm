@@ -65,6 +65,13 @@ public struct Tools: AgentComponent {
     public init(_ tools: [any AnyJSONTool]) {
         self.tools = tools
     }
+
+    /// Creates a tools container from typed tools.
+    ///
+    /// - Parameter tools: The typed tools to include.
+    public init<T: Tool>(_ tools: [T]) {
+        self.tools = tools.map { AnyJSONToolAdapter($0) }
+    }
 }
 
 // MARK: - AgentMemoryComponent
@@ -133,6 +140,13 @@ public struct InferenceProviderComponent: AgentComponent {
     /// - Parameter provider: The inference provider to use.
     public init(_ provider: any InferenceProvider) {
         self.provider = provider
+    }
+
+    /// Creates a Conduit-backed inference provider component.
+    ///
+    /// - Parameter selection: The Conduit provider selection to use.
+    public init(_ selection: ConduitProviderSelection) {
+        self.provider = selection.makeProvider()
     }
 }
 
@@ -260,7 +274,7 @@ public struct HandoffsComponent: AgentComponent, Sendable {
     /// `HandoffConfiguration` instances and type-erase them automatically.
     ///
     /// - Parameter configs: The typed handoff configurations.
-    public init<each T: Agent>(_ configs: repeat HandoffConfiguration<each T>) {
+    public init<each T: AgentRuntime>(_ configs: repeat HandoffConfiguration<each T>) {
         var result: [AnyHandoffConfiguration] = []
         repeat result.append(AnyHandoffConfiguration(each configs))
         handoffs = result
@@ -403,11 +417,11 @@ public struct MCPClientComponent: AgentComponent {
     }
 }
 
-// MARK: - AgentBuilder
+// MARK: - LegacyAgentBuilder
 
-/// A result builder for creating agents declaratively.
+/// A legacy result builder for creating agents declaratively.
 ///
-/// `AgentBuilder` enables a SwiftUI-like syntax for constructing agents
+/// `LegacyAgentBuilder` enables a SwiftUI-like syntax for constructing agents
 /// with their components (instructions, tools, memory, configuration).
 ///
 /// Example:
@@ -429,7 +443,7 @@ public struct MCPClientComponent: AgentComponent {
 /// }
 /// ```
 @resultBuilder
-public struct AgentBuilder {
+public struct LegacyAgentBuilder {
     // MARK: Public
 
     /// The aggregated components from the builder.
@@ -603,7 +617,7 @@ public extension ReActAgent {
     /// ```
     ///
     /// - Parameter content: A closure that builds the agent components.
-    init(@AgentBuilder _ content: () -> AgentBuilder.Components) {
+    init(@LegacyAgentBuilder _ content: () -> LegacyAgentBuilder.Components) {
         let components = content()
 
         // Build configuration with Phase 5 overrides
