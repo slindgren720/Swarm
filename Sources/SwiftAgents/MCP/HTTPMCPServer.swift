@@ -138,9 +138,9 @@ public actor HTTPMCPServer: MCPServer {
 
     /// Lists all tools available from this MCP server.
     ///
-    /// - Returns: An array of tool definitions describing available tools.
+    /// - Returns: An array of tool schemas describing available tools.
     /// - Throws: `MCPError` if the request fails.
-    public func listTools() async throws -> [ToolDefinition] {
+    public func listTools() async throws -> [ToolSchema] {
         let request = MCPRequest(method: "tools/list")
         let response = try await sendRequest(request)
 
@@ -393,18 +393,18 @@ public actor HTTPMCPServer: MCPServer {
         )
     }
 
-    /// Parses tool definitions from a tools/list response.
+    /// Parses tool schemas from a tools/list response.
     ///
     /// - Parameter value: The result value from the tools/list response.
-    /// - Returns: An array of ToolDefinition objects.
+    /// - Returns: An array of ToolSchema objects.
     /// - Throws: `MCPError` if parsing fails.
-    private func parseTools(from value: SendableValue) throws -> [ToolDefinition] {
+    private func parseTools(from value: SendableValue) throws -> [ToolSchema] {
         guard let dict = value.dictionaryValue,
               let toolsArray = dict["tools"]?.arrayValue else {
             throw MCPError.parseError("Expected dictionary with 'tools' array in tools/list result")
         }
 
-        var tools: [ToolDefinition] = []
+        var tools: [ToolSchema] = []
 
         for toolValue in toolsArray {
             guard let toolDict = toolValue.dictionaryValue,
@@ -415,7 +415,7 @@ public actor HTTPMCPServer: MCPServer {
             let description = extractString(toolDict["description"]) ?? ""
             let parameters = parseParameters(from: toolDict["inputSchema"])
 
-            tools.append(ToolDefinition(name: name, description: description, parameters: parameters))
+            tools.append(ToolSchema(name: name, description: description, parameters: parameters))
         }
 
         return tools

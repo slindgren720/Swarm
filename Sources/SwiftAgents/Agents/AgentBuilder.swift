@@ -65,6 +65,13 @@ public struct Tools: AgentComponent {
     public init(_ tools: [any AnyJSONTool]) {
         self.tools = tools
     }
+
+    /// Creates a tools container from typed tools.
+    ///
+    /// - Parameter tools: The typed tools to include.
+    public init<T: Tool>(_ tools: [T]) {
+        self.tools = tools.map { AnyJSONToolAdapter($0) }
+    }
 }
 
 // MARK: - AgentMemoryComponent
@@ -133,6 +140,13 @@ public struct InferenceProviderComponent: AgentComponent {
     /// - Parameter provider: The inference provider to use.
     public init(_ provider: any InferenceProvider) {
         self.provider = provider
+    }
+
+    /// Creates a Conduit-backed inference provider component.
+    ///
+    /// - Parameter selection: The Conduit provider selection to use.
+    public init(_ selection: ConduitProviderSelection) {
+        self.provider = selection.makeProvider()
     }
 }
 

@@ -48,7 +48,7 @@ public struct HandoffBuilder<Target: AgentRuntime>: Sendable {
 
     /// Sets a custom tool name for this handoff.
     ///
-    /// The tool name is used when generating tool definitions for the
+    /// The tool name is used when generating tool schemas for the
     /// handoff. If not set, a name is generated from the target agent's
     /// type name.
     ///

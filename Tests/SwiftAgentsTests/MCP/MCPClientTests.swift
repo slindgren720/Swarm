@@ -31,11 +31,11 @@ struct MCPClientServerManagementTests {
         let client = MCPClient()
         let server1 = MockMCPServer(
             name: "duplicate",
-            tools: [ToolDefinition(name: "tool1", description: "First", parameters: [])]
+            tools: [ToolSchema(name: "tool1", description: "First", parameters: [])]
         )
         let server2 = MockMCPServer(
             name: "duplicate",
-            tools: [ToolDefinition(name: "tool2", description: "Second", parameters: [])]
+            tools: [ToolSchema(name: "tool2", description: "Second", parameters: [])]
         )
 
         try await client.addServer(server1)
@@ -116,8 +116,8 @@ struct MCPClientToolAggregationTests {
         let server = MockMCPServer(
             name: "tool-server",
             tools: [
-                ToolDefinition(name: "read", description: "Read file", parameters: []),
-                ToolDefinition(name: "write", description: "Write file", parameters: [])
+                ToolSchema(name: "read", description: "Read file", parameters: []),
+                ToolSchema(name: "write", description: "Write file", parameters: [])
             ]
         )
 
@@ -137,15 +137,15 @@ struct MCPClientToolAggregationTests {
         let fileServer = MockMCPServer(
             name: "file-server",
             tools: [
-                ToolDefinition(name: "read_file", description: "Read", parameters: []),
-                ToolDefinition(name: "write_file", description: "Write", parameters: [])
+                ToolSchema(name: "read_file", description: "Read", parameters: []),
+                ToolSchema(name: "write_file", description: "Write", parameters: [])
             ]
         )
         let dbServer = MockMCPServer(
             name: "db-server",
             tools: [
-                ToolDefinition(name: "query", description: "Query DB", parameters: []),
-                ToolDefinition(name: "insert", description: "Insert record", parameters: [])
+                ToolSchema(name: "query", description: "Query DB", parameters: []),
+                ToolSchema(name: "insert", description: "Insert record", parameters: [])
             ]
         )
 
@@ -176,12 +176,12 @@ struct MCPClientToolAggregationTests {
         let noToolsServer = MockMCPServer(
             name: "no-tools",
             capabilities: MCPCapabilities(tools: false, resources: true),
-            tools: [ToolDefinition(name: "hidden", description: "Should not appear", parameters: [])]
+            tools: [ToolSchema(name: "hidden", description: "Should not appear", parameters: [])]
         )
         let toolsServer = MockMCPServer(
             name: "with-tools",
             capabilities: MCPCapabilities(tools: true, resources: false),
-            tools: [ToolDefinition(name: "visible", description: "Should appear", parameters: [])]
+            tools: [ToolSchema(name: "visible", description: "Should appear", parameters: [])]
         )
 
         try await client.addServer(noToolsServer)
@@ -206,7 +206,7 @@ struct MCPClientCacheTests {
         let client = MCPClient()
         let server = MockMCPServer(
             name: "cache-test",
-            tools: [ToolDefinition(name: "cached", description: "Cached tool", parameters: [])]
+            tools: [ToolSchema(name: "cached", description: "Cached tool", parameters: [])]
         )
 
         try await client.addServer(server)
@@ -220,8 +220,8 @@ struct MCPClientCacheTests {
 
         // Modify server tools (should not affect cached result)
         await server.setTools([
-            ToolDefinition(name: "new1", description: "New 1", parameters: []),
-            ToolDefinition(name: "new2", description: "New 2", parameters: [])
+            ToolSchema(name: "new1", description: "New 1", parameters: []),
+            ToolSchema(name: "new2", description: "New 2", parameters: [])
         ])
 
         // Second call should return cached result
@@ -235,7 +235,7 @@ struct MCPClientCacheTests {
         let client = MCPClient()
         let server1 = MockMCPServer(
             name: "server1",
-            tools: [ToolDefinition(name: "tool1", description: "Tool 1", parameters: [])]
+            tools: [ToolSchema(name: "tool1", description: "Tool 1", parameters: [])]
         )
 
         try await client.addServer(server1)
@@ -245,7 +245,7 @@ struct MCPClientCacheTests {
         // Add another server - should invalidate cache
         let server2 = MockMCPServer(
             name: "server2",
-            tools: [ToolDefinition(name: "tool2", description: "Tool 2", parameters: [])]
+            tools: [ToolSchema(name: "tool2", description: "Tool 2", parameters: [])]
         )
         try await client.addServer(server2)
 
@@ -258,11 +258,11 @@ struct MCPClientCacheTests {
         let client = MCPClient()
         let server1 = MockMCPServer(
             name: "server1",
-            tools: [ToolDefinition(name: "tool1", description: "Tool 1", parameters: [])]
+            tools: [ToolSchema(name: "tool1", description: "Tool 1", parameters: [])]
         )
         let server2 = MockMCPServer(
             name: "server2",
-            tools: [ToolDefinition(name: "tool2", description: "Tool 2", parameters: [])]
+            tools: [ToolSchema(name: "tool2", description: "Tool 2", parameters: [])]
         )
 
         try await client.addServer(server1)
@@ -284,7 +284,7 @@ struct MCPClientCacheTests {
         let client = MCPClient()
         let server = MockMCPServer(
             name: "refresh-test",
-            tools: [ToolDefinition(name: "original", description: "Original", parameters: [])]
+            tools: [ToolSchema(name: "original", description: "Original", parameters: [])]
         )
 
         try await client.addServer(server)
@@ -293,7 +293,7 @@ struct MCPClientCacheTests {
         #expect(tools1.first?.name == "original")
 
         // Modify server tools
-        await server.setTools([ToolDefinition(name: "refreshed", description: "Refreshed", parameters: [])])
+        await server.setTools([ToolSchema(name: "refreshed", description: "Refreshed", parameters: [])])
 
         // Regular getAllTools returns cached
         let tools2 = try await client.getAllTools()
@@ -309,7 +309,7 @@ struct MCPClientCacheTests {
         let client = MCPClient()
         let server = MockMCPServer(
             name: "invalidate-test",
-            tools: [ToolDefinition(name: "original", description: "Original", parameters: [])]
+            tools: [ToolSchema(name: "original", description: "Original", parameters: [])]
         )
 
         try await client.addServer(server)
@@ -318,7 +318,7 @@ struct MCPClientCacheTests {
         #expect(tools1.first?.name == "original")
 
         // Modify server tools
-        await server.setTools([ToolDefinition(name: "invalidated", description: "Invalidated", parameters: [])])
+        await server.setTools([ToolSchema(name: "invalidated", description: "Invalidated", parameters: [])])
 
         // Invalidate cache manually
         await client.invalidateCache()

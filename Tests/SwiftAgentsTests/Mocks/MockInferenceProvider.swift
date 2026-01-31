@@ -53,7 +53,7 @@ public actor MockInferenceProvider: InferenceProvider {
     public private(set) var streamCalls: [(prompt: String, options: InferenceOptions)] = []
 
     /// Recorded tool call generations for verification.
-    public private(set) var toolCallCalls: [(prompt: String, tools: [ToolDefinition], options: InferenceOptions)] = []
+    public private(set) var toolCallCalls: [(prompt: String, tools: [ToolSchema], options: InferenceOptions)] = []
 
     /// Gets the number of generate calls made.
     public var generateCallCount: Int {
@@ -149,7 +149,7 @@ public actor MockInferenceProvider: InferenceProvider {
 
     public func generateWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse {
         toolCallCalls.append((prompt, tools, options))

@@ -72,6 +72,23 @@ extension OrchestrationError: LocalizedError {
 
 extension OrchestrationError: CustomDebugStringConvertible {
     public var debugDescription: String {
-        "OrchestrationError.\(self)"
+        switch self {
+        case let .agentNotFound(name):
+            return "OrchestrationError.agentNotFound(name: \(name))"
+        case .noAgentsConfigured:
+            return "OrchestrationError.noAgentsConfigured"
+        case let .handoffFailed(source, target, reason):
+            return "OrchestrationError.handoffFailed(source: \(source), target: \(target), reason: \(reason))"
+        case let .handoffSkipped(from, to, reason):
+            return "OrchestrationError.handoffSkipped(from: \(from), to: \(to), reason: \(reason))"
+        case let .routingFailed(reason):
+            return "OrchestrationError.routingFailed(reason: \(reason))"
+        case let .invalidRouteCondition(reason):
+            return "OrchestrationError.invalidRouteCondition(reason: \(reason))"
+        case let .mergeStrategyFailed(reason):
+            return "OrchestrationError.mergeStrategyFailed(reason: \(reason))"
+        case let .allAgentsFailed(errors):
+            return "OrchestrationError.allAgentsFailed(errors: \(errors))"
+        }
     }
 }

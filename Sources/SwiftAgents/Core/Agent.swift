@@ -236,13 +236,13 @@ public protocol InferenceProvider: Sendable {
     /// Generates a response with potential tool calls.
     /// - Parameters:
     ///   - prompt: The input prompt.
-    ///   - tools: Available tool definitions.
+    ///   - tools: Available tool schemas.
     ///   - options: Generation options.
     /// - Returns: The inference response which may include tool calls.
     /// - Throws: `AgentError` if generation fails.
     func generateWithToolCalls(
         prompt: String,
-        tools: [ToolDefinition],
+        tools: [ToolSchema],
         options: InferenceOptions
     ) async throws -> InferenceResponse
 }

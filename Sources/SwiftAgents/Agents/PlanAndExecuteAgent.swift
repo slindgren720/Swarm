@@ -310,6 +310,45 @@ public actor PlanAndExecuteAgent: AgentRuntime {
         toolRegistry = ToolRegistry(tools: tools)
     }
 
+    /// Creates a new PlanAndExecuteAgent with typed tools.
+    /// - Parameters:
+    ///   - tools: Typed tools available to the agent. Default: []
+    ///   - instructions: System instructions defining agent behavior. Default: ""
+    ///   - configuration: Agent configuration settings. Default: .default
+    ///   - memory: Optional memory system. Default: nil
+    ///   - inferenceProvider: Optional custom inference provider. Default: nil
+    ///   - tracer: Optional tracer for observability. Default: nil
+    ///   - inputGuardrails: Input validation guardrails. Default: []
+    ///   - outputGuardrails: Output validation guardrails. Default: []
+    ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
+    ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: []
+    public init<T: Tool>(
+        tools: [T] = [],
+        instructions: String = "",
+        configuration: AgentConfiguration = .default,
+        memory: (any Memory)? = nil,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        tracer: (any Tracer)? = nil,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffs: [AnyHandoffConfiguration] = []
+    ) {
+        let bridged = tools.map { AnyJSONToolAdapter($0) }
+        self.init(
+            tools: bridged,
+            instructions: instructions,
+            configuration: configuration,
+            memory: memory,
+            inferenceProvider: inferenceProvider,
+            tracer: tracer,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: handoffs
+        )
+    }
+
     // MARK: - Agent Protocol Methods
 
     /// Executes the agent with the given input and returns a result.
@@ -666,6 +705,16 @@ public extension PlanAndExecuteAgent {
             return copy
         }
 
+        /// Sets the tools from typed tool instances.
+        /// - Parameter tools: The typed tools to use.
+        /// - Returns: Self for chaining.
+        @discardableResult
+        public func tools<T: Tool>(_ tools: [T]) -> Builder {
+            var copy = self
+            copy._tools = tools.map { AnyJSONToolAdapter($0) }
+            return copy
+        }
+
         /// Adds a tool.
         /// - Parameter tool: The tool to add.
         /// - Returns: Self for chaining.
@@ -673,6 +722,16 @@ public extension PlanAndExecuteAgent {
         public func addTool(_ tool: any AnyJSONTool) -> Builder {
             var copy = self
             copy._tools.append(tool)
+            return copy
+        }
+
+        /// Adds a typed tool.
+        /// - Parameter tool: The typed tool to add.
+        /// - Returns: Self for chaining.
+        @discardableResult
+        public func addTool<T: Tool>(_ tool: T) -> Builder {
+            var copy = self
+            copy._tools.append(AnyJSONToolAdapter(tool))
             return copy
         }
 

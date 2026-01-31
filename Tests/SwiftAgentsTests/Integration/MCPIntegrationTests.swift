@@ -14,7 +14,7 @@ actor IntegrationTestMCPServer: MCPServer {
     // MARK: Internal
 
     let name: String
-    var toolsToReturn: [ToolDefinition] = []
+    var toolsToReturn: [ToolSchema] = []
     private(set) var initializeCalled = false
     private(set) var callToolHistory: [(name: String, arguments: [String: SendableValue])] = []
 
@@ -36,7 +36,7 @@ actor IntegrationTestMCPServer: MCPServer {
         return _capabilities
     }
 
-    func listTools() async throws -> [ToolDefinition] {
+    func listTools() async throws -> [ToolSchema] {
         toolsToReturn
     }
 
@@ -53,7 +53,7 @@ actor IntegrationTestMCPServer: MCPServer {
 
     func close() async throws {}
 
-    func setTools(_ tools: [ToolDefinition]) {
+    func setTools(_ tools: [ToolSchema]) {
         toolsToReturn = tools
     }
 
@@ -70,8 +70,8 @@ struct MCPToolBridgeIntegrationTests {
     func bridgeToolsFromServer() async throws {
         let server = IntegrationTestMCPServer(name: "test-server")
         await server.setTools([
-            ToolDefinition(name: "read_file", description: "Read a file", parameters: []),
-            ToolDefinition(name: "write_file", description: "Write a file", parameters: [])
+            ToolSchema(name: "read_file", description: "Read a file", parameters: []),
+            ToolSchema(name: "write_file", description: "Write a file", parameters: [])
         ])
 
         let bridge = MCPToolBridge(server: server)
@@ -86,7 +86,7 @@ struct MCPToolBridgeIntegrationTests {
     func bridgedToolExecution() async throws {
         let server = IntegrationTestMCPServer(name: "exec-server")
         await server.setTools([
-            ToolDefinition(name: "search", description: "Search", parameters: [])
+            ToolSchema(name: "search", description: "Search", parameters: [])
         ])
 
         let bridge = MCPToolBridge(server: server)
@@ -114,8 +114,8 @@ struct MCPClientToolDiscoveryTests {
         let client = MCPClient()
         let server = MockMCPServer(name: "discovery-server")
         await server.setTools([
-            ToolDefinition(name: "tool_a", description: "Tool A", parameters: []),
-            ToolDefinition(name: "tool_b", description: "Tool B", parameters: [])
+            ToolSchema(name: "tool_a", description: "Tool A", parameters: []),
+            ToolSchema(name: "tool_b", description: "Tool B", parameters: [])
         ])
 
         try await client.addServer(server)
@@ -131,7 +131,7 @@ struct MCPClientToolDiscoveryTests {
         let client = MCPClient()
         let server = MockMCPServer(name: "cache-server")
         await server.setTools([
-            ToolDefinition(name: "cached_tool", description: "Cached", parameters: [])
+            ToolSchema(name: "cached_tool", description: "Cached", parameters: [])
         ])
 
         try await client.addServer(server)
@@ -142,7 +142,7 @@ struct MCPClientToolDiscoveryTests {
 
         // Modify server tools
         await server.setTools([
-            ToolDefinition(name: "new_tool", description: "New", parameters: [])
+            ToolSchema(name: "new_tool", description: "New", parameters: [])
         ])
 
         // Second call returns cached result

@@ -44,147 +44,73 @@ File → Add Package Dependencies → `https://github.com/chriskarani/SwiftAgent
 
 ---
 
+### Optional integrations (Wax)
+
+Wax support lives behind a SwiftPM trait so that the adapter only builds when you explicitly enable it. Conduit is now built into `SwiftAgents`.
+
+Enable the Wax trait when declaring the dependency and bind the trait-aware product inside your target:
+
+```swift
+.package(
+    url: "https://github.com/christopherkarani/SwiftAgents.git",
+    from: "0.3.1",
+    traits: ["Wax"]
+)
+
+.target(
+    name: "YourApp",
+    dependencies: [
+        .product(
+            name: "SwiftAgentsWax",
+            package: "SwiftAgents",
+            condition: .when(traits: ["Wax"])
+        ),
+        "SwiftAgents"
+    ]
+)
+```
+
+When invoking SwiftPM directly you must supply `defaults` along with the traits you want:
+
+```bash
+swift build --traits defaults,Wax
+```
+
+The trait also defines a compile-time flag (`SWIFTAGENTS_WAX_ENABLED`) so downstream code can guard integrations.
+
+---
+
+## Wax Memory (RAG)
+
+When the Wax trait is enabled, you can use `WaxMemory` as a primary RAG-backed memory store:
+
+```swift
+import SwiftAgents
+import SwiftAgentsWax
+import WaxVectorSearchMiniLM
+
+let embedder = MiniLMEmbedder()
+let memory = try await WaxMemory(url: waxURL, embedder: embedder)
+
+let result = try await CustomerService()
+    .environment(\.inferenceProvider, provider)
+    .environment(\.memory, memory)
+    .run("Summarize our billing policy.")
+```
+
+`Relay()` (the unified loop node) will prioritize Wax memory context when present.
+
+---
+
 ## Quick Start
 
-### 1. Basic Agent
+Design, configure, and execute agents solely through the SwiftUI-style DSL. Define your domain logic on value types and expose configuration via properties, then run or stream the agent when ready.
 
 ```swift
 import SwiftAgents
 
-// Initialize logging once at startup
-Log.bootstrap()
-
-// Create your inference provider
 let provider = MyInferenceProvider()
 
-// Build and run an agent
-let agent = ReActAgent.Builder()
-    .inferenceProvider(provider)
-    .instructions("You are a helpful assistant.")
-    .build()
-
-let result = try await agent.run("What is the capital of France?")
-print(result.output)  // "The capital of France is Paris."
-```
-
-### 2. Agent with Tools
-
-Create tools using the `@Tool` macro:
-
-```swift
-@Tool("Calculate mathematical expressions")
-struct CalculatorTool {
-    @Parameter("The math expression to evaluate")
-    var expression: String
-
-    func execute() async throws -> Double {
-        // Your calculation logic
-        let result = try evaluate(expression)
-        return result
-    }
-}
-
-// Add tools to your agent
-let agent = ReActAgent.Builder()
-    .inferenceProvider(provider)
-    .instructions("You are a math assistant.")
-    .addTool(CalculatorTool())
-    .build()
-
-let result = try await agent.run("What is 25% of 200?")
-print(result.output)  // "50"
-```
-
-### 3. Agent with Memory
-
-Maintain conversation context across interactions:
-
-```swift
-let memory = ConversationMemory(maxMessages: 100)
-
-let agent = ReActAgent.Builder()
-    .inferenceProvider(provider)
-    .memory(memory)
-    .instructions("You are a friendly assistant.")
-    .build()
-
-// First message
-let r1 = try await agent.run("My name is Alice.")
-print(r1.output)  // "Nice to meet you, Alice!"
-
-// Agent remembers context
-let r2 = try await agent.run("What's my name?")
-print(r2.output)  // "Your name is Alice."
-```
-
----
-
-## Key Features
-
-### Streaming Responses
-
-Stream agent execution in real-time:
-
-```swift
-for try await event in agent.stream("Explain quantum computing") {
-    switch event {
-    case .thinking(let thought):
-        print("Thinking: \(thought)")
-    case .toolCalling(let call):
-        print("Using tool: \(call.toolName)")
-    case .chunk(let text):
-        print(text, terminator: "")
-    case .completed(let result):
-        print("\nDone in \(result.duration)")
-    case .failed(let error):
-        print("Error: \(error)")
-    default:
-        break
-    }
-}
-```
-
-> See [docs/streaming.md](docs/streaming.md) for SwiftUI integration examples.
-
-### Multi-Agent Orchestration
-
-Route requests to specialized agents:
-
-```swift
-// Create specialized agents
-let mathAgent = ReActAgent.Builder()
-    .inferenceProvider(provider)
-    .addTool(CalculatorTool())
-    .instructions("You are a math specialist.")
-    .build()
-
-let weatherAgent = ReActAgent.Builder()
-    .inferenceProvider(provider)
-    .addTool(WeatherTool())
-    .instructions("You are a weather specialist.")
-    .build()
-
-// Create supervisor with intelligent routing
-let supervisor = SupervisorAgent(
-    agents: [
-        (name: "math", agent: mathAgent, description: mathDesc),
-        (name: "weather", agent: weatherAgent, description: weatherDesc)
-    ],
-    routingStrategy: LLMRoutingStrategy(inferenceProvider: provider)
-)
-
-// Supervisor routes to the right agent
-let result = try await supervisor.run("What's 15 × 23?")
-// → Routes to math agent
-```
-
-> See [docs/orchestration.md](docs/orchestration.md) for chains, parallel execution, and handoffs.
-
-### Declarative Agents (SwiftUI-Style DSL)
-
-Define agents as value types with explicit execution flow:
-
-```swift
 struct CustomerService: Agent {
     var instructions: String { "You are a helpful customer service agent." }
 
@@ -197,7 +123,8 @@ struct CustomerService: Agent {
 
         Routes {
             When(.contains("billing"), name: "billing") {
-                Billing().temperature(0.2)
+                Billing()
+                    .temperature(0.2)
             }
             Otherwise {
                 GeneralSupport()
@@ -214,104 +141,218 @@ struct CustomerService: Agent {
 
 struct Billing: Agent {
     var instructions: String { "You are billing support. Be concise." }
-    var loop: some AgentLoop { Generate() }
+    var loop: some AgentLoop { Relay() }
 }
 
 struct GeneralSupport: Agent {
-    var loop: some AgentLoop { Generate() }
+    var instructions: String { "You are general customer support." }
+    var loop: some AgentLoop { Relay() }
 }
 
 let result = try await CustomerService()
     .environment(\.inferenceProvider, provider)
     .run("billing help")
+
+print(result.output)
 ```
 
 Notes:
-- `Generate()` resolves its inference provider from the current environment and throws if none is set.
-- Every `AgentLoop` must include at least one `Generate()` call (directly, or via a sub-agent that generates).
+- `Relay()` (aka `Generate()`) resolves its inference provider from the current environment and throws if none is set.
+- Every `AgentLoop` must include a `Generate()` or `Relay()` call, either directly or through a sub-agent like `Billing`/`GeneralSupport`.
+- The sample matches `Tests/SwiftAgentsTests/DSL/DeclarativeAgentDSLTests.swift`, so the guards and routes are exercised in automated tests.
+
+---
+
+## Key Features
+
+### Streaming Responses
+
+Stream the DSL agent you just defined and inspect `AgentEvent` cases:
+
+```swift
+let streamingAgent = CustomerService()
+    .environment(\.inferenceProvider, provider)
+
+for try await event in streamingAgent.stream("Explain quantum computing") {
+    switch event {
+    case .thinking(let thought):
+        print("Thinking: \(thought)")
+    case .toolCalling(let call):
+        print("Calling tool: \(call.toolName)")
+    case .chunk(let text):
+        print(text, terminator: "")
+    case .completed(let result):
+        print("\nDone in \(result.duration)")
+    case .failed(let error):
+        print("Error: \(error)")
+    default:
+        break
+    }
+}
+```
+
+> See [docs/streaming.md](docs/streaming.md) for SwiftUI integration samples that consume `stream(...)`.
+
+### Multi-Agent Orchestration
+
+Define focused agents as value types and let a supervisor route requests based on the DSL logic:
+
+```swift
+struct MathSpecialist: Agent {
+    var instructions: String { "Solve billing math crisply." }
+    var loop: some AgentLoop { Relay() }
+}
+
+struct WeatherSpecialist: Agent {
+    var instructions: String { "Report weather succinctly." }
+    var loop: some AgentLoop { Relay() }
+}
+
+let mathDesc = AgentDescription(
+    name: "math",
+    description: "Handles billing calculations",
+    keywords: ["math", "calculate"]
+)
+
+let weatherDesc = AgentDescription(
+    name: "weather",
+    description: "Handles weather inquiries",
+    keywords: ["weather", "forecast"]
+)
+
+let strategy = KeywordRoutingStrategy()
+let supervisor = SupervisorAgent(
+    agents: [
+        (name: mathDesc.name, agent: MathSpecialist(), description: mathDesc),
+        (name: weatherDesc.name, agent: WeatherSpecialist(), description: weatherDesc)
+    ],
+    routingStrategy: strategy,
+    fallbackAgent: GeneralSupport()
+)
+
+let result = try await supervisor.run("What is 15 × 23?")
+print(result.output)
+```
+
+> Swap in `LLMRoutingStrategy(inferenceProvider: provider)` when you want the supervisor to reason about intent in addition to keywords.
+
+> See [docs/orchestration.md](docs/orchestration.md) for chains, parallel execution, and handoffs built on top of DSL agents.
 
 ### Session Management
 
-Persist conversation history:
+Store conversation history for longer-lived interactions while keeping DSL agents stateless:
 
 ```swift
-// In-memory session (ephemeral)
 let session = InMemorySession(sessionId: "user_123")
+let customerService = CustomerService()
+    .environment(\.inferenceProvider, provider)
 
-try await agent.run("Remember: my favorite color is blue", session: session)
-try await agent.run("What's my favorite color?", session: session)
+try await customerService.run("Remember: my favorite color is blue", session: session)
+try await customerService.run("What's my favorite color?", session: session)
 // → "Your favorite color is blue."
-
-// Persistent session (survives app restart - Apple platforms)
-#if canImport(SwiftData)
-let persistentSession = try PersistentSession.persistent(sessionId: "user_123")
-#endif
 ```
 
-> See [docs/sessions.md](docs/sessions.md) for session operations and persistence.
+> See [docs/sessions.md](docs/sessions.md) for persistence adapters, including `PersistentSession` on Apple platforms.
 
 ### Guardrails
 
-Validate inputs and outputs for safety:
+Guard the inputs and outputs of DSL loops before or after calling `Relay()`:
 
 ```swift
-let inputGuardrail = InputGuard("ContentFilter") { input in
-    if containsProhibitedContent(input) {
-        return .tripwire(message: "Prohibited content detected")
+struct GuardedAgent: Agent {
+    var instructions: String { "Only pass safe content through." }
+
+    var loop: some AgentLoop {
+        Guard(.input) {
+            InputGuard("no_shouting") { input in
+                input.contains("SHOUT") ? .tripwire(message: "Calm please") : .passed()
+            }
+        }
+
+        Relay()
+
+        Guard(.output) {
+            OutputGuard("no_pii") { output in
+                output.contains("SSN") ? .tripwire(message: "PII detected") : .passed()
+            }
+        }
     }
-    return .passed()
 }
-
-let outputGuardrail = OutputGuard("PIIRedactor") { output in
-    // Redact sensitive info from output
-    let redacted = redactSensitiveInfo(output)
-    return .passed(metadata: ["redacted": .bool(redacted != output)])
-}
-
-let agent = ReActAgent.Builder()
-    .inferenceProvider(provider)
-    .inputGuardrails([inputGuardrail])
-    .outputGuardrails([outputGuardrail])
-    .build()
 ```
 
-> See [docs/guardrails.md](docs/guardrails.md) for safety patterns.
+> See [docs/guardrails.md](docs/guardrails.md) for helper guardrails and automatic metadata recording.
 
 ### MCP Integration
 
-Connect to Model Context Protocol servers:
+Offer Model Context Protocol tools directly on DSL agents:
 
 ```swift
-// Connect to MCP servers
 let client = MCPClient()
 let server = HTTPMCPServer(name: "my-server", baseURL: serverURL)
 try await client.addServer(server)
 
-// Get all tools from connected servers
 let mcpTools = try await client.getAllTools()
 
-// Use MCP tools with your agent
-let agent = ReActAgent.Builder()
-    .inferenceProvider(provider)
-    .tools(mcpTools)
-    .build()
+struct ResearchAgent: Agent {
+    var instructions: String { "Research the topic with MCP tools." }
+    var tools: [any AnyJSONTool]
+    var loop: some AgentLoop { Relay() }
+}
+
+let researchAgent = ResearchAgent(tools: mcpTools)
+let researchResult = try await researchAgent
+    .environment(\.inferenceProvider, provider)
+    .run("Summarize the latest updates.")
+print(researchResult.output)
 ```
 
-> See [docs/mcp.md](docs/mcp.md) for server implementation.
+> See [docs/mcp.md](docs/mcp.md) for server implementations, tool discovery, and caching strategies.
+
+### Tools in the DSL
+
+Every DSL agent can provide a `tools` array, and `Relay()` automatically makes those tools available to the inference provider (along with the agent’s instructions, guardrails, and environment). The `@Tool` macro reduces boilerplate by generating the necessary `Tool` conformance and typed parameters that `Relay()` exposes to the model.
+
+```swift
+@Tool("Calculates totals")
+struct CalculatorTool {
+    @Parameter("Values to sum")
+    var values: [Double]
+
+    func execute() async throws -> Double {
+        try values.reduce(0, +)
+    }
+}
+
+struct BillingAgent: Agent {
+    var instructions: String { "Use calculator for numeric requests." }
+    var tools: [any AnyJSONTool] { [CalculatorTool()] }
+    var loop: some AgentLoop { Relay() }
+}
+
+let billingResult = try await BillingAgent()
+    .environment(\.inferenceProvider, provider)
+    .run("What is 25% of 200?")
+```
+
+When `Relay()` runs, it introspects the agent’s `tools` list (including any tool macros, wrappers, or imported MCP `ToolSchema`s) so the model can plan tool calls, pass in structured parameters, and receive typed results without extra plumbing. Guardrails and modifiers still wrap `Relay()`, keeping the DSL-focused flow consistent.
 
 ### Resilience
 
-Build robust agents with failure handling:
+Wrap DSL agents with retry, timeout, fallback, and circuit-breaker behaviors:
 
 ```swift
-let resilientAgent = agent
-    .withRetry(.exponentialBackoff(maxAttempts: 3))
+let resilientAgent = CustomerService()
+    .environment(\.inferenceProvider, provider)
+    .retry(.exponentialBackoff(maxAttempts: 3, baseDelay: .seconds(1)))
     .withCircuitBreaker(threshold: 5, resetTimeout: .seconds(60))
-    .withFallback(backupAgent)
-    .withTimeout(.seconds(30))
+    .withFallback(GeneralSupport())
+    .timeout(.seconds(30))
+
+let final = try await resilientAgent.run("Handle billing help urgently.")
+print(final.output)
 ```
 
-> See [docs/resilience.md](docs/resilience.md) for circuit breakers and retry policies.
+> See [docs/resilience.md](docs/resilience.md) for circuit breakers, retry policies, and fallback helpers.
 
 ---
 

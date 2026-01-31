@@ -148,7 +148,7 @@ The ToolCallingAgent leverages the LLM's native tool calling capabilities via st
 #### Execution Pattern
 
 1. Build prompt with system instructions and conversation history
-2. Call provider with tool definitions
+2. Call provider with tool schemas
 3. If tool calls requested, execute each tool and add results to history
 4. If no tool calls, return content as final answer
 5. Repeat until done or max iterations reached

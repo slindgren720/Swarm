@@ -35,7 +35,7 @@ actor SimpleMockProvider: InferenceProvider {
 
     func generateWithToolCalls(
         prompt: String,
-        tools _: [ToolDefinition],
+        tools _: [ToolSchema],
         options _: InferenceOptions
     ) async throws -> InferenceResponse {
         generateCalls.append(prompt)

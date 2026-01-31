@@ -88,7 +88,7 @@ public actor ChatAgent: AgentRuntime {
             }
 
             // Retrieve memory context (RAG / summarization) if available
-            let tokenLimit = configuration.maxTokens ?? 2000
+            let tokenLimit = configuration.contextProfile.memoryTokenLimit
             let memoryContext: String = if let mem = activeMemory {
                 await mem.context(for: input, tokenLimit: tokenLimit)
             } else {

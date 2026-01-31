@@ -1,86 +1,104 @@
 // swift-tools-version: 6.2
 import PackageDescription
 import CompilerPluginSupport
+import Foundation
 
-let package = Package(
-    name: "SwiftAgents",
-    platforms: [
-        .macOS(.v15),
-        .iOS(.v17),
-        .watchOS(.v10),
-        .tvOS(.v17),
-        .visionOS(.v1)
-    ],
-    products: [
-        .library(name: "SwiftAgents", targets: ["SwiftAgents"]),
-        .executable(name: "SwiftAgentsDemo", targets: ["SwiftAgentsDemo"])
-    ],
-    dependencies: [
-        // Swift Syntax for macro implementations
-        .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
-        // Swift Logging API
-        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
+let includeDemo = ProcessInfo.processInfo.environment["SWIFTAGENTS_INCLUDE_DEMO"] == "1"
 
-    ],
-    targets: [
-        // MARK: - Macro Implementation (Compiler Plugin)
-        .macro(
-            name: "SwiftAgentsMacros",
-            dependencies: [
-                .product(name: "SwiftSyntax", package: "swift-syntax"),
-                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-                .product(name: "SwiftSyntaxBuilder", package: "swift-syntax")
-            ],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency")
-            ]
-        ),
+var packageProducts: [Product] = [
+    .library(name: "SwiftAgents", targets: ["SwiftAgents"])
+]
 
-        // MARK: - Main Library
-        .target(
-            name: "SwiftAgents",
-            dependencies: [
-                "SwiftAgentsMacros",
-                .product(name: "Logging", package: "swift-log"),
-            ],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency")
-            ]
-        ),
+if includeDemo {
+    packageProducts.append(.executable(name: "SwiftAgentsDemo", targets: ["SwiftAgentsDemo"]))
+}
 
-        // MARK: - Tests
-        .testTarget(
-            name: "SwiftAgentsTests",
-            dependencies: ["SwiftAgents"],
-            resources: [
-                .copy("Guardrails/INTEGRATION_TEST_SUMMARY.md"),
-                .copy("Guardrails/QUICK_REFERENCE.md")
-            ],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency")
-            ]
-        ),
-        .testTarget(
-            name: "SwiftAgentsMacrosTests",
-            dependencies: [
-                "SwiftAgentsMacros",
-                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
-            ],
-            swiftSettings: [
-                .enableExperimentalFeature("StrictConcurrency")
-            ]
-        ),
-        
-        // MARK: - Demo Executable
+let packageDependencies: [Package.Dependency] = [
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", from: "600.0.0"),
+    .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
+    .package(
+        url: "https://github.com/christopherkarani/Wax.git",
+        branch: "main"
+    ),
+    .package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.0")
+]
+
+var packageTargets: [Target] = [
+    // MARK: - Macro Implementation (Compiler Plugin)
+    .macro(
+        name: "SwiftAgentsMacros",
+        dependencies: [
+            .product(name: "SwiftSyntax", package: "swift-syntax"),
+            .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+            .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+            .product(name: "SwiftSyntaxBuilder", package: "swift-syntax")
+        ],
+        swiftSettings: [
+            .enableExperimentalFeature("StrictConcurrency")
+        ]
+    ),
+
+    // MARK: - Main Library
+    .target(
+        name: "SwiftAgents",
+        dependencies: [
+            "SwiftAgentsMacros",
+            .product(name: "Logging", package: "swift-log"),
+            .product(name: "Conduit", package: "Conduit"),
+            .product(name: "Wax", package: "Wax")
+        ],
+        swiftSettings: [
+            .enableExperimentalFeature("StrictConcurrency")
+        ]
+    ),
+
+    // MARK: - Tests
+    .testTarget(
+        name: "SwiftAgentsTests",
+        dependencies: ["SwiftAgents"],
+        resources: [
+            .copy("Guardrails/INTEGRATION_TEST_SUMMARY.md"),
+            .copy("Guardrails/QUICK_REFERENCE.md")
+        ],
+        swiftSettings: [
+            .enableExperimentalFeature("StrictConcurrency")
+        ]
+    ),
+    .testTarget(
+        name: "SwiftAgentsMacrosTests",
+        dependencies: [
+            "SwiftAgentsMacros",
+            .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
+        ],
+        swiftSettings: [
+            .enableExperimentalFeature("StrictConcurrency")
+        ]
+    ),
+
+]
+
+if includeDemo {
+    packageTargets.append(
         .executableTarget(
             name: "SwiftAgentsDemo",
-            dependencies: [
-                "SwiftAgents"
-            ],
+            dependencies: ["SwiftAgents"],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")
             ]
         )
-    ]
+    )
+}
+
+let package = Package(
+    name: "SwiftAgents",
+    platforms: [
+        .macOS(.v26),
+        .iOS(.v26),
+        .watchOS(.v10),
+        .tvOS(.v17),
+        .visionOS(.v1)
+    ],
+    products: packageProducts,
+    dependencies: packageDependencies,
+    targets: packageTargets
 )

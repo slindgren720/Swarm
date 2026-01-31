@@ -70,12 +70,6 @@ struct MyApp {
 
 
         
-//        let planAgent = PlanAndExecuteAgent.Builder()
-//            .instructions("Your Goal is to take the take and break it down into smaller steps and create a plan")
-//            .inferenceProvider(session)
-//            .addTool(StringTool())
-//            .withBuiltInTools()
-//            .build()
 
         let agent = ReActAgent.Builder()
             .instructions("Your a deep research Agent, when you dont find something you keep looking ")

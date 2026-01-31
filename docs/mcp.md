@@ -189,7 +189,7 @@ public protocol MCPServer: Sendable {
     func close() async throws
 
     // Tool Methods
-    func listTools() async throws -> [ToolDefinition]
+    func listTools() async throws -> [ToolSchema]
     func callTool(name: String, arguments: [String: SendableValue]) async throws -> SendableValue
 
     // Resource Methods
@@ -386,10 +386,10 @@ let errorResponse = MCPResponse.failure(
 
 ### Tool Schemas
 
-Tools are described using `ToolDefinition` with JSON Schema for parameters:
+Tools are described using `ToolSchema` with JSON Schema for parameters:
 
 ```swift
-let toolDefinition = ToolDefinition(
+let toolDefinition = ToolSchema(
     name: "search",
     description: "Search for documents",
     parameters: [

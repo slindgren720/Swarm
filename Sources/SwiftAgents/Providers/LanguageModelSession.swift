@@ -44,7 +44,7 @@ extension LanguageModelSession: InferenceProvider {
 
     public func generateWithToolCalls(
         prompt: String,
-        tools _: [ToolDefinition],
+        tools _: [ToolSchema],
         options _: InferenceOptions
     ) async throws -> InferenceResponse {
         // TODO: Implement native tool calling for FoundationModels

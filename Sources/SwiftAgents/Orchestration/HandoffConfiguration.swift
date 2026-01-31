@@ -135,7 +135,7 @@ public typealias InputFilterCallback = @Sendable (HandoffInputData) -> HandoffIn
 /// Use this callback to dynamically enable or disable handoffs based on
 /// the current context and target agent state. Return `false` to skip
 /// this handoff option when presenting available handoffs to the user
-/// or when building tool definitions.
+    /// or when building tool schemas.
 ///
 /// Example:
 /// ```swift
@@ -197,7 +197,7 @@ public struct HandoffConfiguration<Target: AgentRuntime>: Sendable {
 
     /// Optional description for the handoff tool.
     ///
-    /// This description is used when generating tool definitions for
+    /// This description is used when generating tool schemas for
     /// the handoff, helping the model understand when to use this handoff.
     public let toolDescription: String?
 

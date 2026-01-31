@@ -43,6 +43,10 @@ internal struct EventStreamHooks: RunHooks {
         continuation.yield(.toolCallStarted(call: call))
     }
 
+    func onToolCallPartial(context _: AgentContext?, agent _: any AgentRuntime, update: PartialToolCallUpdate) async {
+        continuation.yield(.toolCallPartial(update: update))
+    }
+
     func onToolEnd(context _: AgentContext?, agent _: any AgentRuntime, result: ToolResult) async {
         let call = await toolCallStore.take(id: result.callId)
             ?? ToolCall(id: result.callId, toolName: "unknown", arguments: [:])

@@ -27,7 +27,7 @@ public extension AgentLoop {
     func execute(_ input: String, context: OrchestrationStepContext) async throws -> AgentResult {
         guard !steps.isEmpty else {
             throw AgentError.invalidLoop(
-                reason: "AgentLoop for '\(context.orchestratorName)' has no steps. Add at least one Generate() call."
+                reason: "AgentLoop for '\(context.orchestratorName)' has no steps. Add at least one Generate() or Relay() call."
             )
         }
 
@@ -35,7 +35,7 @@ public extension AgentLoop {
         let hasGenerate = try _agentLoopContainsGenerate(steps: steps, visitedAgents: &visitedAgents)
         guard hasGenerate else {
             throw AgentError.invalidLoop(
-                reason: "AgentLoop for '\(context.orchestratorName)' must include at least one Generate() call."
+                reason: "AgentLoop for '\(context.orchestratorName)' must include at least one Generate() or Relay() call."
             )
         }
 
@@ -103,7 +103,7 @@ private func _agentLoopContainsGenerate(
     visitedAgents: inout Set<ObjectIdentifier>
 ) throws -> Bool {
     for step in steps {
-        if step is Generate { return true }
+        if step is Generate || step is Relay { return true }
 
         if let nestedAgent = step as? any _AgentLoopNestedAgentSteps {
             let id = nestedAgent._agentType

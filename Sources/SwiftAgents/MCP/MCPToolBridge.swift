@@ -10,7 +10,7 @@ import Foundation
 /// An actor that bridges Model Context Protocol (MCP) tools to SwiftAgents Tool protocol.
 ///
 /// MCPToolBridge provides seamless integration between MCP servers and SwiftAgents
-/// by converting MCP tool definitions into native Tool implementations that can be
+/// by converting MCP tool schemas into native Tool implementations that can be
 /// used with agents, registries, and orchestrators.
 ///
 /// ## Usage
@@ -49,7 +49,7 @@ public actor MCPToolBridge {
 
     /// Converts all MCP tools to SwiftAgents tools.
     ///
-    /// This method retrieves all tool definitions from the MCP server and
+    /// This method retrieves all tool schemas from the MCP server and
     /// wraps each one in an `MCPBridgedTool` that delegates execution back
     /// to the server.
     ///
@@ -67,9 +67,9 @@ public actor MCPToolBridge {
     /// }
     /// ```
     public func bridgeTools() async throws -> [any AnyJSONTool] {
-        let definitions = try await server.listTools()
-        return definitions.map { definition in
-            MCPBridgedTool(definition: definition, server: server)
+        let schemas = try await server.listTools()
+        return schemas.map { schema in
+            MCPBridgedTool(schema: schema, server: server)
         }
     }
 
@@ -83,7 +83,7 @@ public actor MCPToolBridge {
 
 /// A Tool implementation that delegates execution to an MCP server.
 ///
-/// MCPBridgedTool wraps an MCP tool definition and routes all execution
+/// MCPBridgedTool wraps an MCP tool schema and routes all execution
 /// calls to the underlying MCP server. This enables MCP tools to be used
 /// seamlessly within the SwiftAgents framework.
 ///
@@ -101,7 +101,7 @@ public actor MCPToolBridge {
 ///
 /// - **Execution Serialization**: All calls to `execute()` are automatically serialized
 ///   by the server's actor isolation, even when invoked concurrently from multiple contexts.
-/// - **No Data Races**: The `definition` property is immutable and `Sendable`. The `server`
+/// - **No Data Races**: The `schema` property is immutable and `Sendable`. The `server`
 ///   reference is safe because actor methods are inherently thread-safe.
 /// - **Concurrent Safety**: Multiple `MCPBridgedTool` instances referencing the same server
 ///   can safely execute in parallel; the actor ensures request serialization.
@@ -118,8 +118,8 @@ public actor MCPToolBridge {
 /// }
 /// ```
 struct MCPBridgedTool: AnyJSONTool, Sendable {
-    /// The tool definition from the MCP server.
-    let definition: ToolDefinition
+    /// The tool schema from the MCP server.
+    let schema: ToolSchema
 
     /// The MCP server to delegate execution to.
     let server: any MCPServer
@@ -128,17 +128,17 @@ struct MCPBridgedTool: AnyJSONTool, Sendable {
 
     /// The unique name of the tool.
     var name: String {
-        definition.name
+        schema.name
     }
 
     /// A description of what the tool does.
     var description: String {
-        definition.description
+        schema.description
     }
 
     /// The parameters this tool accepts.
     var parameters: [ToolParameter] {
-        definition.parameters
+        schema.parameters
     }
 
     /// Executes the tool by delegating to the MCP server.

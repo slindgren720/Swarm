@@ -83,6 +83,11 @@ public protocol RunHooks: Sendable {
     ///   - arguments: The arguments passed to the tool.
     func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async
 
+    /// Called when tool call arguments are streamed (partial JSON fragments).
+    ///
+    /// This is emitted before tool execution begins and is intended for live UI.
+    func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async
+
     /// Called when a tool execution completes successfully.
     ///
     /// - Parameters:
@@ -169,6 +174,9 @@ public extension RunHooks {
 
     /// Default no-op implementation for tool start.
     func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async {}
+
+    /// Default no-op implementation for tool call partial updates.
+    func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async {}
 
     /// Default no-op implementation for tool end.
     func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async {}
@@ -283,6 +291,16 @@ public struct CompositeRunHooks: RunHooks {
             for hook in hooks {
                 group.addTask {
                     await hook.onToolStart(context: context, agent: agent, call: call)
+                }
+            }
+        }
+    }
+
+    public func onToolCallPartial(context: AgentContext?, agent: any AgentRuntime, update: PartialToolCallUpdate) async {
+        await withTaskGroup(of: Void.self) { group in
+            for hook in hooks {
+                group.addTask {
+                    await hook.onToolCallPartial(context: context, agent: agent, update: update)
                 }
             }
         }

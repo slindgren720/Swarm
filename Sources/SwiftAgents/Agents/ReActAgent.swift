@@ -85,6 +85,45 @@ public actor ReActAgent: AgentRuntime {
         toolRegistry = ToolRegistry(tools: tools)
     }
 
+    /// Creates a new ReActAgent with typed tools.
+    /// - Parameters:
+    ///   - tools: Typed tools available to the agent. Default: []
+    ///   - instructions: System instructions defining agent behavior. Default: ""
+    ///   - configuration: Agent configuration settings. Default: .default
+    ///   - memory: Optional memory system. Default: nil
+    ///   - inferenceProvider: Optional custom inference provider. Default: nil
+    ///   - tracer: Optional tracer for observability. Default: nil
+    ///   - inputGuardrails: Input validation guardrails. Default: []
+    ///   - outputGuardrails: Output validation guardrails. Default: []
+    ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
+    ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: []
+    public init<T: Tool>(
+        tools: [T] = [],
+        instructions: String = "",
+        configuration: AgentConfiguration = .default,
+        memory: (any Memory)? = nil,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        tracer: (any Tracer)? = nil,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffs: [AnyHandoffConfiguration] = []
+    ) {
+        let bridged = tools.map { AnyJSONToolAdapter($0) }
+        self.init(
+            tools: bridged,
+            instructions: instructions,
+            configuration: configuration,
+            memory: memory,
+            inferenceProvider: inferenceProvider,
+            tracer: tracer,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: handoffs
+        )
+    }
+
     // MARK: - Agent Protocol Methods
 
     /// Executes the agent with the given input and returns a result.
@@ -101,6 +140,7 @@ public actor ReActAgent: AgentRuntime {
 
         let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
         let activeMemory = memory ?? AgentEnvironmentValues.current.memory
+        let lifecycleMemory = activeMemory as? any MemorySessionLifecycle
 
         let tracing = TracingHelper(
             tracer: activeTracer,
@@ -110,6 +150,10 @@ public actor ReActAgent: AgentRuntime {
 
         // Notify hooks of agent start
         await hooks?.onAgentStart(context: nil, agent: self, input: input)
+
+        if let lifecycleMemory {
+            await lifecycleMemory.beginMemorySession()
+        }
 
         do {
             // Run input guardrails (with hooks for event emission)
@@ -131,9 +175,11 @@ public actor ReActAgent: AgentRuntime {
 
             // Store in memory (for AI context) if available
             if let mem = activeMemory {
-                // Add session history to memory
-                for msg in sessionHistory {
-                    await mem.add(msg)
+                // Seed session history only once for a fresh memory instance.
+                if session != nil, await mem.isEmpty, !sessionHistory.isEmpty {
+                    for msg in sessionHistory {
+                        await mem.add(msg)
+                    }
                 }
                 await mem.add(userMessage)
             }
@@ -166,10 +212,16 @@ public actor ReActAgent: AgentRuntime {
             let result = resultBuilder.build()
             await tracing.traceComplete(result: result)
             await hooks?.onAgentEnd(context: nil, agent: self, result: result)
+            if let lifecycleMemory {
+                await lifecycleMemory.endMemorySession()
+            }
             return result
         } catch {
             await hooks?.onError(context: nil, agent: self, error: error)
             await tracing.traceError(error)
+            if let lifecycleMemory {
+                await lifecycleMemory.endMemorySession()
+            }
             throw error
         }
     }
@@ -232,14 +284,14 @@ public actor ReActAgent: AgentRuntime {
         var iteration = 0
         var scratchpad = "" // Accumulates Thought-Action-Observation history
         let startTime = ContinuousClock.now
-        let toolDefinitions = tools.map(\.definition)
+        let toolSchemas = tools.map(\.schema)
 
         // Retrieve relevant context from memory once at the start
         // This enables RAG-style retrieval for VectorMemory or summarization for SummaryMemory
         var memoryContext = ""
         if let mem = memory ?? AgentEnvironmentValues.current.memory {
             // Use a reasonable token limit for context (configurable via maxTokens or default)
-            let tokenLimit = configuration.maxTokens ?? 2000
+            let tokenLimit = configuration.contextProfile.memoryTokenLimit
             memoryContext = await mem.context(for: input, tokenLimit: tokenLimit)
         }
 
@@ -271,7 +323,7 @@ public actor ReActAgent: AgentRuntime {
 
             // Step 2: Generate response from model
             await hooks?.onLLMStart(context: nil, agent: self, systemPrompt: instructions, inputMessages: [MemoryMessage.user(prompt)])
-            let inference = try await generateResponse(prompt: prompt, tools: toolDefinitions)
+            let inference = try await generateResponse(prompt: prompt, tools: toolSchemas)
             let modelText = inference.content ?? ""
             let llmResponseForHooks = modelText.isEmpty
                 ? inference.toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
@@ -357,6 +409,7 @@ public actor ReActAgent: AgentRuntime {
         tracing: TracingHelper?
     ) async throws -> String {
         var updatedScratchpad = scratchpad
+        let activeMemory = memory ?? AgentEnvironmentValues.current.memory
         let engine = ToolExecutionEngine()
         let outcome = try await engine.execute(
             call,
@@ -376,6 +429,9 @@ public actor ReActAgent: AgentRuntime {
             Action: \(call.name)(\(formatArguments(call.arguments)))
             Observation: \(outcome.result.output.description)
             """
+            if let activeMemory {
+                await activeMemory.add(.tool(outcome.result.output.description, toolName: call.name))
+            }
         } else {
             let errorMessage = outcome.result.errorMessage ?? "Unknown error"
             updatedScratchpad += """
@@ -384,6 +440,9 @@ public actor ReActAgent: AgentRuntime {
             Action: \(call.name)(\(formatArguments(call.arguments)))
             Observation: Error - \(errorMessage)
             """
+            if let activeMemory {
+                await activeMemory.add(.tool("Error - \(errorMessage)", toolName: call.name))
+            }
 
             if configuration.stopOnToolError {
                 throw AgentError.toolExecutionFailed(toolName: call.name, underlyingError: errorMessage)
@@ -448,6 +507,7 @@ public actor ReActAgent: AgentRuntime {
         }
 
         var updatedScratchpad = scratchpad
+        let activeMemory = memory ?? AgentEnvironmentValues.current.memory
         for (call, outcome) in zip(calls, outcomes) {
             if outcome.result.isSuccess {
                 updatedScratchpad += """
@@ -456,6 +516,9 @@ public actor ReActAgent: AgentRuntime {
                 Action: \(call.name)(\(formatArguments(call.arguments)))
                 Observation: \(outcome.result.output.description)
                 """
+                if let activeMemory {
+                    await activeMemory.add(.tool(outcome.result.output.description, toolName: call.name))
+                }
             } else {
                 let errorMessage = outcome.result.errorMessage ?? "Unknown error"
                 updatedScratchpad += """
@@ -464,6 +527,9 @@ public actor ReActAgent: AgentRuntime {
                 Action: \(call.name)(\(formatArguments(call.arguments)))
                 Observation: Error - \(errorMessage)
                 """
+                if let activeMemory {
+                    await activeMemory.add(.tool("Error - \(errorMessage)", toolName: call.name))
+                }
             }
         }
 
@@ -575,7 +641,7 @@ public actor ReActAgent: AgentRuntime {
 
     // MARK: - Response Generation
 
-    private func generateResponse(prompt: String, tools: [ToolDefinition]) async throws -> InferenceResponse {
+    private func generateResponse(prompt: String, tools: [ToolSchema]) async throws -> InferenceResponse {
         let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
         guard let provider else {
             throw AgentError.inferenceProviderUnavailable(
@@ -642,6 +708,16 @@ public extension ReActAgent {
             return copy
         }
 
+        /// Sets the tools from typed tool instances.
+        /// - Parameter tools: The typed tools to use.
+        /// - Returns: A new builder with the updated tools.
+        @discardableResult
+        public func tools<T: Tool>(_ tools: [T]) -> Builder {
+            var copy = self
+            copy.tools = tools.map { AnyJSONToolAdapter($0) }
+            return copy
+        }
+
         /// Adds a tool.
         /// - Parameter tool: The tool to add.
         /// - Returns: A new builder with the tool added.
@@ -649,6 +725,16 @@ public extension ReActAgent {
         public func addTool(_ tool: any AnyJSONTool) -> Builder {
             var copy = self
             copy.tools.append(tool)
+            return copy
+        }
+
+        /// Adds a typed tool.
+        /// - Parameter tool: The typed tool to add.
+        /// - Returns: A new builder with the tool added.
+        @discardableResult
+        public func addTool<T: Tool>(_ tool: T) -> Builder {
+            var copy = self
+            copy.tools.append(AnyJSONToolAdapter(tool))
             return copy
         }
 

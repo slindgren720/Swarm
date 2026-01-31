@@ -131,6 +131,43 @@ extension AgentError: LocalizedError {
 
 extension AgentError: CustomDebugStringConvertible {
     public var debugDescription: String {
-      "AgentError.\(self.errorDescription ?? "Unknown")"
+        switch self {
+        case let .invalidInput(reason):
+            return "AgentError.invalidInput(reason: \(reason))"
+        case .cancelled:
+            return "AgentError.cancelled"
+        case let .maxIterationsExceeded(iterations):
+            return "AgentError.maxIterationsExceeded(iterations: \(iterations))"
+        case let .timeout(duration):
+            return "AgentError.timeout(duration: \(duration))"
+        case let .invalidLoop(reason):
+            return "AgentError.invalidLoop(reason: \(reason))"
+        case let .toolNotFound(name):
+            return "AgentError.toolNotFound(name: \(name))"
+        case let .toolExecutionFailed(toolName, underlyingError):
+            return "AgentError.toolExecutionFailed(toolName: \(toolName), underlyingError: \(underlyingError))"
+        case let .invalidToolArguments(toolName, reason):
+            return "AgentError.invalidToolArguments(toolName: \(toolName), reason: \(reason))"
+        case let .inferenceProviderUnavailable(reason):
+            return "AgentError.inferenceProviderUnavailable(reason: \(reason))"
+        case let .contextWindowExceeded(tokenCount, limit):
+            return "AgentError.contextWindowExceeded(tokenCount: \(tokenCount), limit: \(limit))"
+        case let .guardrailViolation(reason):
+            return "AgentError.guardrailViolation(reason: \(reason))"
+        case let .contentFiltered(reason):
+            return "AgentError.contentFiltered(reason: \(reason))"
+        case let .unsupportedLanguage(language):
+            return "AgentError.unsupportedLanguage(language: \(language))"
+        case let .generationFailed(reason):
+            return "AgentError.generationFailed(reason: \(reason))"
+        case let .modelNotAvailable(model):
+            return "AgentError.modelNotAvailable(model: \(model))"
+        case let .rateLimitExceeded(retryAfter):
+            return "AgentError.rateLimitExceeded(retryAfter: \(String(describing: retryAfter)))"
+        case let .embeddingFailed(reason):
+            return "AgentError.embeddingFailed(reason: \(reason))"
+        case let .internalError(reason):
+            return "AgentError.internalError(reason: \(reason))"
+        }
     }
 }
