@@ -28,7 +28,7 @@ Non-goals (initial rollout):
 
 2) **Naming collision**
 
-The module currently has a SwiftUI-style declarative workflow protocol named `Agent` (`Sources/SwiftAgents/DSL/DeclarativeAgent.swift`). Long-term we want a unified runtime concrete type named `Agent`, so the legacy DSL must be renamed (and deprecated) to remove the collision.
+The module previously had a SwiftUI-style legacy loop DSL protocol named `Agent` (now renamed to `AgentLoopDefinition`, deprecated) in `Sources/SwiftAgents/DSL/DeclarativeAgent.swift`. Long-term we want a unified runtime concrete type named `Agent`, so the legacy DSL must remain non-colliding.
 
 3) **Two DSL layers**
 
@@ -51,7 +51,7 @@ The module currently has a SwiftUI-style declarative workflow protocol named `Ag
   - New: `Agent(...)` + explicit strategy selection (e.g. `.toolCalling`, `.react`, `.chat`, `.planAndExecute`)
 
 - SwiftUI-style orchestration:
-  - Old: `struct MyFlow: Agent { @AgentLoopBuilder var loop: ... }`
+  - Old: `struct MyFlow: AgentLoopDefinition { @AgentLoopBuilder var loop: ... }`
   - New: `struct MyFlow: AgentBlueprint { @OrchestrationBuilder var body: ... }`
   - Model turns: embed a runtime `Agent` step in the blueprint body (e.g. `Agent(...)`) rather than `Generate()/Relay()`.
 
@@ -157,4 +157,3 @@ These will be produced as separate focused `docs/work-packages/*.md` files:
 - WP4: Orchestration/blueprint ergonomics (handoff overloads, builder updates).
 - WP5: Contract/parity tests.
 - WP6: Docs/README/demo updates.
-

@@ -12,7 +12,10 @@ SwiftAgents provides three primary agent types, each implementing a different re
 
 All *runtime* agents implement the `AgentRuntime` protocol and share common configuration options for tools, memory, guardrails, sessions, and observability.
 
-In addition, SwiftAgents includes a SwiftUI-style **declarative workflow DSL** (also named `Agent` today) which describes orchestration flow and adapts into an executable runtime via `LoopAgent`.
+SwiftAgents also includes SwiftUI-style DSLs for defining workflows:
+
+- `AgentBlueprint` (preferred, long-term) - orchestrations built with `@OrchestrationBuilder`.
+- `AgentLoopDefinition` (legacy, deprecated) - a loop DSL built with `@AgentLoopBuilder`, executed via `LoopAgent`.
 
 ## Runtime: AgentRuntime Protocol
 
@@ -98,9 +101,9 @@ SwiftAgents also provides a SwiftUI-style API for defining orchestration flow. T
 
 Blueprints execute by compiling down to an `Orchestration` at runtime, and can be lifted into `AgentRuntime` via `BlueprintAgent<Blueprint>` when needed.
 
-### Entry Point: Declarative Agent Protocol
+### Legacy Loop DSL: AgentLoopDefinition (Deprecated)
 
-The declarative DSL is centered on `protocol Agent` in `Sources/SwiftAgents/DSL/DeclarativeAgent.swift:13`. Conformers define:
+The legacy loop DSL is centered on `protocol AgentLoopDefinition` in `Sources/SwiftAgents/DSL/DeclarativeAgent.swift:23`. Conformers define:
 
 - configuration-like properties (`instructions`, `tools`, `configuration`, guardrails, etc.)
 - an execution flow in `loop`, built using `@AgentLoopBuilder`
