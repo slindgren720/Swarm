@@ -215,8 +215,13 @@ public struct OrchestrationBuilder {
         AgentStep(BlueprintAgent(blueprint))
     }
 
-    /// Converts a declarative `Agent` into an orchestration step.
-    public static func buildExpression<A: Agent>(_ agent: A) -> OrchestrationStep {
+    /// Converts a legacy loop DSL definition into an orchestration step.
+    @available(
+        *,
+        deprecated,
+        message: "Deprecated legacy loop DSL. Prefer AgentBlueprint for orchestration; embed runtime AgentRuntime steps for model turns instead of Generate()/Relay()."
+    )
+    public static func buildExpression<A: AgentLoopDefinition>(_ agent: A) -> OrchestrationStep {
         LoopAgentStep(agent)
     }
 
