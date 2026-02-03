@@ -53,6 +53,8 @@ public extension AgentLoopDefinition {
 }
 
 public struct ConfiguredAgent<Base: AgentLoopDefinition>: AgentLoopDefinition {
+    public typealias Loop = Base.Loop
+
     public let base: Base
     public let transform: @Sendable (AgentConfiguration) -> AgentConfiguration
 
@@ -80,5 +82,5 @@ public struct ConfiguredAgent<Base: AgentLoopDefinition>: AgentLoopDefinition {
     public var outputGuardrails: [any OutputGuardrail] { base.outputGuardrails }
     public var handoffs: [AnyHandoffConfiguration] { base.handoffs }
 
-    public var loop: AgentLoopSequence { base.loop }
+    public var loop: Base.Loop { base.loop }
 }

@@ -51,7 +51,7 @@ public protocol AgentLoopDefinition: Sendable {
     var handoffs: [AnyHandoffConfiguration] { get }
 
     /// Declarative execution flow for this agent.
-    @AgentLoopBuilder var loop: Loop { get }
+    var loop: Loop { get }
 }
 
 public extension AgentLoopDefinition {

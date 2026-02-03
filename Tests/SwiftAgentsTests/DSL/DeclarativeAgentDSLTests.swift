@@ -9,7 +9,7 @@ import Testing
 // MARK: - Test Agents
 
 private struct SampleSequentialAgent: AgentLoopDefinition {
-    var loop: some AgentLoop {
+    @AgentLoopBuilder var loop: some AgentLoop {
         Generate()
         Transform { input in "A\(input)" }
         Transform { input in "B\(input)" }
@@ -19,30 +19,30 @@ private struct SampleSequentialAgent: AgentLoopDefinition {
 private struct BillingAgent: AgentLoopDefinition {
     var instructions: String { "You are billing support. Be concise." }
 
-    var loop: some AgentLoop {
+    @AgentLoopBuilder var loop: some AgentLoop {
         Generate()
     }
 }
 
 private struct GeneralSupportAgent: AgentLoopDefinition {
     var instructions: String { "You are general customer support." }
-    var loop: some AgentLoop { Generate() }
+    @AgentLoopBuilder var loop: some AgentLoop { Generate() }
 }
 
 private struct MathSpecialistAgent: AgentLoopDefinition {
     var instructions: String { "Solve billing math crisply." }
-    var loop: some AgentLoop { Generate() }
+    @AgentLoopBuilder var loop: some AgentLoop { Generate() }
 }
 
 private struct WeatherSpecialistAgent: AgentLoopDefinition {
     var instructions: String { "Report weather succinctly." }
-    var loop: some AgentLoop { Generate() }
+    @AgentLoopBuilder var loop: some AgentLoop { Generate() }
 }
 
 private struct GuardedAgent: AgentLoopDefinition {
     var instructions: String { "Only pass safe content through." }
 
-    var loop: some AgentLoop {
+    @AgentLoopBuilder var loop: some AgentLoop {
         Guard(.input) {
             InputGuard("no_shouting") { input in
                 input.contains("SHOUT") ? .tripwire(message: "Calm please") : .passed()
@@ -64,25 +64,25 @@ private struct ResearchAgent: AgentLoopDefinition {
 
     var instructions: String { "Research the topic with tools." }
     var tools: [any AnyJSONTool] { toolsList }
-    var loop: some AgentLoop { Generate() }
+    @AgentLoopBuilder var loop: some AgentLoop { Generate() }
 }
 
 private struct ToolUsingAgent: AgentLoopDefinition {
     var tools: [any AnyJSONTool] { [MockTool(name: "dsl_tool")] }
-    var loop: some AgentLoop { Generate() }
+    @AgentLoopBuilder var loop: some AgentLoop { Generate() }
 }
 
 private struct CustomerServiceAgent: AgentLoopDefinition {
     var instructions: String { "You are a helpful customer service agent." }
 
-    var loop: some AgentLoop {
+    @AgentLoopBuilder var loop: some AgentLoop {
         Guard(.input) {
             InputGuard("no_secrets") { input in
                 input.contains("password") ? .tripwire(message: "Sensitive data") : .passed()
             }
         }
 
-        Routes {
+        Router {
             When(.contains("billing"), name: "billing") {
                 BillingAgent()
                     .temperature(0.2)
@@ -149,7 +149,7 @@ struct DeclarativeAgentDSLTests {
     @Test("AgentLoop must contain at least one Generate or Relay call")
     func agentLoopRequiresGenerateOrRelay() async throws {
         struct NoGenerateAgent: AgentLoopDefinition {
-            var loop: some AgentLoop {
+            @AgentLoopBuilder var loop: some AgentLoop {
                 Transform { _ in "ok" }
             }
         }
@@ -170,7 +170,7 @@ struct DeclarativeAgentDSLTests {
     @Test("Relay executes a single model turn")
     func relayExecutesModelTurn() async throws {
         struct RelayAgent: AgentLoopDefinition {
-            var loop: some AgentLoop { Relay() }
+            @AgentLoopBuilder var loop: some AgentLoop { Relay() }
         }
 
         let provider = MockInferenceProvider(responses: ["relay:ok"])
@@ -201,7 +201,7 @@ struct DeclarativeAgentDSLTests {
         }
 
         struct MemoryAgent: AgentLoopDefinition {
-            var loop: some AgentLoop { Relay() }
+            @AgentLoopBuilder var loop: some AgentLoop { Relay() }
         }
 
         let provider = MockInferenceProvider(responses: ["ok"])
@@ -218,7 +218,7 @@ struct DeclarativeAgentDSLTests {
         #expect(prompt.contains("wax:context"))
     }
 
-    @Test("Routes selects the first matching branch")
+    @Test("Router selects the first matching branch")
     func routesSelectFirstMatch() async throws {
         let provider = MockInferenceProvider(responses: ["billing:ok"])
 
@@ -227,7 +227,7 @@ struct DeclarativeAgentDSLTests {
             .run("billing help")
 
         #expect(result.output == "billing:ok")
-        #expect(result.metadata["routes.matched_route"]?.stringValue == "billing")
+        #expect(result.metadata["router.matched_route"]?.stringValue == "billing")
     }
 
     @Test("Guard(.input) trips using InputGuard")
