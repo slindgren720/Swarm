@@ -1,7 +1,7 @@
 // AgentRuntime.swift
 // SwiftAgents Framework
 //
-// Core AgentRuntime protocol defining the fundamental agent behavior contract.
+// Core AgentRuntime protocol and related inference types.
 
 import Foundation
 

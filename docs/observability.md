@@ -674,6 +674,6 @@ public func trace(_ event: TraceEvent) async {
 Disable tracing overhead in unit tests:
 
 ```swift
-let agent = ToolCallingAgent(tracer: NoOpTracer())
+let agent = Agent(tracer: NoOpTracer())
 // Tests run without tracing overhead
 ```

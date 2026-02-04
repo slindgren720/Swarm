@@ -365,7 +365,7 @@ Supported operations:
 
 ```swift
 // Platform-specific: includes CalculatorTool on Apple platforms
-let agent = ToolCallingAgent(
+let agent = Agent(
     tools: BuiltInTools.all,
     instructions: "You are a helpful assistant with access to tools."
 )
@@ -463,7 +463,7 @@ default:
 ### Direct Initialization
 
 ```swift
-let agent = ToolCallingAgent(
+let agent = Agent(
     tools: [
         WeatherTool(),
         CalculatorTool(),
@@ -481,7 +481,7 @@ runtime `AnyJSONTool` ABI automatically.
 ### Using Builder Pattern
 
 ```swift
-let agent = try ToolCallingAgent.Builder()
+let agent = Agent.Builder()
     .tools([WeatherTool(), CalculatorTool()])
     .instructions("You are a helpful math and weather assistant")
     .configuration(.default)
@@ -505,12 +505,12 @@ let result = try await reactAgent.run("Calculate 15% tip on $45.50")
 // Agent will reason about using calculator tool, then execute it
 ```
 
-### ToolCallingAgent Example
+### Agent Example
 
-ToolCallingAgent uses the LLM's native tool calling API for more reliable execution:
+Agent uses the LLM's native tool calling API for more reliable execution:
 
 ```swift
-let toolAgent = ToolCallingAgent(
+let toolAgent = Agent(
     tools: [WeatherTool(), StocksTool()],
     instructions: "You are a financial and weather assistant.",
     configuration: AgentConfiguration(
@@ -824,7 +824,7 @@ func createToolsFromConfig(_ config: ToolConfiguration) async -> [any AnyJSONToo
     return tools
 }
 
-let agent = ToolCallingAgent(
+let agent = Agent(
     tools: await createToolsFromConfig(config),
     instructions: "You are a configurable assistant"
 )

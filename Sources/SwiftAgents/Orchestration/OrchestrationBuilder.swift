@@ -1125,6 +1125,19 @@ public struct Orchestration: Sendable, OrchestratorProtocol {
             return AgentResult(output: input)
         }
 
+#if SWIFTAGENTS_HIVE_RUNTIME && canImport(HiveCore)
+        return try await OrchestrationHiveEngine.execute(
+            steps: steps,
+            input: input,
+            session: session,
+            hooks: hooks,
+            orchestrator: self,
+            orchestratorName: orchestratorName,
+            handoffs: handoffs,
+            onIterationStart: onIterationStart,
+            onIterationEnd: onIterationEnd
+        )
+#else
         let startTime = ContinuousClock.now
         let context = AgentContext(input: input)
         let stepContext = OrchestrationStepContext(
@@ -1142,6 +1155,7 @@ public struct Orchestration: Sendable, OrchestratorProtocol {
         var allToolResults: [ToolResult] = []
         var totalIterations = 0
         var allMetadata: [String: SendableValue] = [:]
+        allMetadata["orchestration.engine"] = .string("swift")
 
         for (index, step) in steps.enumerated() {
             if Task.isCancelled {
@@ -1185,6 +1199,7 @@ public struct Orchestration: Sendable, OrchestratorProtocol {
             tokenUsage: nil,
             metadata: allMetadata
         )
+#endif
     }
 
     private func applyGroupMetadataIfNeeded(to result: AgentResult) -> AgentResult {

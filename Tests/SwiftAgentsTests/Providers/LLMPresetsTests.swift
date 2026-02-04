@@ -6,9 +6,7 @@ import Testing
 struct LLMPresetsTests {
     @Test("OpenAI preset builds Conduit OpenAI provider")
     func openAIPresetBuildsProvider() {
-        let agent = ToolCallingAgent(
-            inferenceProvider: .openAI(apiKey: "test-key", model: "gpt-4o-mini")
-        )
+        let agent = Agent(.openAI(key: "test-key", model: "gpt-4o-mini"))
 
         let provider = agent.inferenceProvider
         #expect(provider != nil)
@@ -22,9 +20,7 @@ struct LLMPresetsTests {
 
     @Test("Anthropic preset builds Conduit Anthropic provider")
     func anthropicPresetBuildsProvider() {
-        let agent = ToolCallingAgent(
-            inferenceProvider: .anthropic(apiKey: "test-key", model: "claude-3-opus-20240229")
-        )
+        let agent = Agent(.anthropic(key: "test-key", model: "claude-3-opus-20240229"))
 
         let provider = agent.inferenceProvider
         #expect(provider != nil)
@@ -38,9 +34,7 @@ struct LLMPresetsTests {
 
     @Test("OpenRouter preset builds Conduit OpenAI-compatible provider")
     func openRouterPresetBuildsProvider() {
-        let agent = ToolCallingAgent(
-            inferenceProvider: .openRouter(apiKey: "test-key", model: "anthropic/claude-3-opus")
-        )
+        let agent = Agent(.openRouter(key: "test-key", model: "anthropic/claude-3-opus"))
 
         let provider = agent.inferenceProvider
         #expect(provider != nil)

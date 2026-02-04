@@ -36,9 +36,9 @@ struct ToolSchemaIntegrationTests {
     func agentsAcceptTypedTools() {
         let tool = SchemaEchoTool()
 
-        let toolCalling = ToolCallingAgent(tools: [tool])
-        #expect(toolCalling.tools.count == 1)
-        #expect(toolCalling.tools.first?.name == "echo")
+        let agent = Agent(tools: [tool])
+        #expect(agent.tools.count == 1)
+        #expect(agent.tools.first?.name == "echo")
 
         let react = ReActAgent(tools: [tool])
         #expect(react.tools.count == 1)

@@ -161,7 +161,7 @@ inputFilter: { data in
 Dynamically enables or disables the handoff based on runtime conditions:
 
 ```swift
-public typealias IsEnabledCallback = @Sendable (AgentContext, any Agent) async -> Bool
+public typealias IsEnabledCallback = @Sendable (AgentContext, any AgentRuntime) async -> Bool
 ```
 
 Example:

@@ -4,14 +4,32 @@ import CompilerPluginSupport
 import Foundation
 
 let includeDemo = ProcessInfo.processInfo.environment["SWIFTAGENTS_INCLUDE_DEMO"] == "1"
-let includeHive = ProcessInfo.processInfo.environment["SWIFTAGENTS_INCLUDE_HIVE"] == "1"
+
+// Default OFF. Set SWIFTAGENTS_HIVE_RUNTIME=1 to opt in.
+let useHiveRuntime = ProcessInfo.processInfo.environment["SWIFTAGENTS_HIVE_RUNTIME"] == "1"
+
+// Optional integration target (bridges SwiftAgents tools into HiveCore).
+let includeHiveIntegration = ProcessInfo.processInfo.environment["SWIFTAGENTS_INCLUDE_HIVE"] == "1"
+
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+
+let localHiveEnv = ProcessInfo.processInfo.environment["SWIFTAGENTS_USE_LOCAL_HIVE"]
+let useLocalHive: Bool
+if localHiveEnv == "1" {
+    useLocalHive = true
+} else if localHiveEnv == "0" {
+    useLocalHive = false
+} else {
+    let localHivePackage = packageRoot.appendingPathComponent("../Hive/libs/hive/Package.swift").path
+    useLocalHive = FileManager.default.fileExists(atPath: localHivePackage)
+}
 let useLocalDependencies = ProcessInfo.processInfo.environment["SWIFTAGENTS_USE_LOCAL_DEPS"] == "1"
 
 var packageProducts: [Product] = [
     .library(name: "SwiftAgents", targets: ["SwiftAgents"])
 ]
 
-if includeHive {
+if includeHiveIntegration {
     packageProducts.append(.library(name: "HiveSwiftAgents", targets: ["HiveSwiftAgents"]))
 }
 
@@ -26,7 +44,12 @@ var packageDependencies: [Package.Dependency] = [
 
 if useLocalDependencies {
     // NOTE: Local development override.
-    packageDependencies.append(.package(path: "../rag/Wax"))
+    let waxCandidates = ["../Wax", "../rag/Wax"]
+    let waxPath = waxCandidates.first(where: { candidate in
+        FileManager.default.fileExists(atPath: packageRoot.appendingPathComponent(candidate).path)
+    }) ?? "../Wax"
+
+    packageDependencies.append(.package(path: waxPath))
     packageDependencies.append(.package(path: "../Conduit"))
 } else {
     packageDependencies.append(
@@ -38,13 +61,37 @@ if useLocalDependencies {
     packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.1"))
 }
 
-if includeHive {
-    if useLocalDependencies {
-        // NOTE: Opt-in; requires a local checkout of Hive.
+if useHiveRuntime || includeHiveIntegration {
+    if useLocalHive {
         packageDependencies.append(.package(path: "../Hive/libs/hive"))
     } else {
         packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
     }
+}
+
+var swiftAgentsDependencies: [Target.Dependency] = [
+    "SwiftAgentsMacros",
+    .product(name: "Logging", package: "swift-log"),
+    .product(name: "Conduit", package: "Conduit"),
+    .product(name: "Wax", package: "Wax")
+]
+
+if useHiveRuntime {
+    swiftAgentsDependencies.append(
+        .product(
+            name: "HiveCore",
+            package: "Hive",
+            condition: .when(platforms: [.macOS, .iOS])
+        )
+    )
+}
+
+var swiftAgentsSwiftSettings: [SwiftSetting] = [
+    .enableExperimentalFeature("StrictConcurrency")
+]
+
+if useHiveRuntime {
+    swiftAgentsSwiftSettings.append(.define("SWIFTAGENTS_HIVE_RUNTIME"))
 }
 
 var packageTargets: [Target] = [
@@ -65,15 +112,8 @@ var packageTargets: [Target] = [
     // MARK: - Main Library
     .target(
         name: "SwiftAgents",
-        dependencies: [
-            "SwiftAgentsMacros",
-            .product(name: "Logging", package: "swift-log"),
-            .product(name: "Conduit", package: "Conduit"),
-            .product(name: "Wax", package: "Wax")
-        ],
-        swiftSettings: [
-            .enableExperimentalFeature("StrictConcurrency")
-        ]
+        dependencies: swiftAgentsDependencies,
+        swiftSettings: swiftAgentsSwiftSettings
     ),
 
     // MARK: - Tests
@@ -97,11 +137,10 @@ var packageTargets: [Target] = [
         swiftSettings: [
             .enableExperimentalFeature("StrictConcurrency")
         ]
-    ),
-
+    )
 ]
 
-if includeHive {
+if includeHiveIntegration {
     packageTargets.append(
         .target(
             name: "HiveSwiftAgents",

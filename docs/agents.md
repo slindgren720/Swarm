@@ -7,7 +7,7 @@ Agents are the core building blocks of the SwiftAgents framework. An agent is an
 SwiftAgents provides three primary agent types, each implementing a different reasoning paradigm:
 
 - **ReActAgent**: Interleaved reasoning and acting (Thought-Action-Observation loop)
-- **ToolCallingAgent**: Direct tool invocation using structured LLM APIs
+- **Agent**: Direct tool invocation using structured LLM APIs
 - **PlanAndExecuteAgent**: Explicit planning before execution with replanning on failure
 
 All *runtime* agents implement the `AgentRuntime` protocol and share common configuration options for tools, memory, guardrails, sessions, and observability.
@@ -180,7 +180,7 @@ At runtime, the protocol extension provides:
 
 - The `@AgentLoopBuilder` block builds an `AgentLoopSequence` (ordered `OrchestrationStep`s).
 - Steps like `Generate()` / `Relay()` are the “model-turn” steps and pass the previous output into the next step.
-- `LoopAgent` runs the loop and, when it needs to do a model turn, it constructs a `RelayAgent` (currently `typealias RelayAgent = ToolCallingAgent`) using:
+- `LoopAgent` runs the loop and, when it needs to do a model turn, it constructs a `RelayAgent` (currently `typealias RelayAgent = Agent`) using:
   - the declarative agent's configuration (`instructions`, `tools`, `configuration`, guardrails, handoffs)
   - *task-local* environment values (`AgentEnvironmentValues.current`) for `memory`, `inferenceProvider`, `tracer`
 
@@ -191,7 +191,7 @@ This means declarative agents are primarily an orchestration layer; the model in
 Separately from the declarative workflow DSL, SwiftAgents includes a builder-style configuration DSL for concrete runtime agents:
 
 ```swift
-let agent = ToolCallingAgent {
+let agent = Agent {
     Instructions("You are a helpful assistant.")
     Tools { WeatherTool(); CalculatorTool() }
     Configuration(.default.maxIterations(5))
@@ -258,9 +258,20 @@ print(result.output)
 // Final Answer: 15% of 200 is 30, and today is January 15, 2024.
 ```
 
-### ToolCallingAgent
+### Agent
 
-The ToolCallingAgent leverages the LLM's native tool calling capabilities via structured APIs (`generateWithToolCalls()`), providing more reliable and type-safe tool invocation compared to text parsing.
+Agent leverages the LLM's native tool calling capabilities via structured APIs (`generateWithToolCalls()`), providing more reliable and type-safe tool invocation compared to text parsing.
+
+If you don't provide an inference provider, Agent will try to use Apple Foundation Models (on-device) when available. If Foundation Models are unavailable, Agent throws `AgentError.inferenceProviderUnavailable`.
+
+#### Inference Provider Resolution
+
+Provider resolution order is:
+
+1. An explicit provider passed to `Agent(...)` (including `Agent(_:)`)
+2. A provider set via `.environment(\.inferenceProvider, ...)`
+3. Apple Foundation Models (on-device), if available
+4. Otherwise, throw `AgentError.inferenceProviderUnavailable`
 
 #### Execution Pattern
 
@@ -270,7 +281,7 @@ The ToolCallingAgent leverages the LLM's native tool calling capabilities via st
 4. If no tool calls, return content as final answer
 5. Repeat until done or max iterations reached
 
-#### When to Use ToolCallingAgent
+#### When to Use Agent
 
 - When using models with native function calling support (OpenAI, Claude, etc.)
 - For reliable tool invocation without text parsing
@@ -280,8 +291,9 @@ The ToolCallingAgent leverages the LLM's native tool calling capabilities via st
 #### Code Example
 
 ```swift
-// Create a ToolCallingAgent
-let agent = ToolCallingAgent(
+// Create an Agent
+let agent = Agent(
+    .anthropic(key: "..."),
     tools: [WeatherTool(), CalculatorTool()],
     instructions: "You are a helpful assistant with access to tools."
 )
@@ -294,7 +306,7 @@ print(result.output)
 #### Using the Builder Pattern
 
 ```swift
-let agent = ToolCallingAgent.Builder()
+let agent = Agent.Builder()
     .tools([WeatherTool(), CalculatorTool()])
     .instructions("You are a helpful assistant.")
     .configuration(.default.maxIterations(5))
@@ -305,7 +317,7 @@ let agent = ToolCallingAgent.Builder()
 #### Using the DSL Syntax
 
 ```swift
-let agent = ToolCallingAgent {
+let agent = Agent {
     Instructions("You are a helpful assistant.")
 
     Tools {
@@ -440,10 +452,10 @@ let dateAgent = baseBuilder
 
 ### Using DSL Syntax
 
-ToolCallingAgent and PlanAndExecuteAgent support declarative DSL syntax:
+Agent and PlanAndExecuteAgent support declarative DSL syntax:
 
 ```swift
-let agent = ToolCallingAgent {
+let agent = Agent {
     Instructions("You are a helpful assistant.")
 
     Tools {
@@ -514,7 +526,7 @@ let agent = ReActAgent(
 Tools extend agent capabilities. See the Tools documentation for details:
 
 ```swift
-let agent = ToolCallingAgent(
+let agent = Agent(
     tools: [
         CalculatorTool(),
         DateTimeTool(),
@@ -550,7 +562,7 @@ let agent = ReActAgent(
 Guardrails validate inputs and outputs:
 
 ```swift
-let agent = ToolCallingAgent(
+let agent = Agent(
     tools: tools,
     instructions: instructions,
     inputGuardrails: [
@@ -727,32 +739,32 @@ let result2 = try await agent.run("What's my name?", session: session)
 Hooks provide lifecycle callbacks for monitoring:
 
 ```swift
-class MyHooks: RunHooks {
-    func onAgentStart(context: Any?, agent: any Agent, input: String) async {
+struct MyHooks: RunHooks {
+    func onAgentStart(context: AgentContext?, agent: any AgentRuntime, input: String) async {
         print("Agent starting with: \(input)")
     }
 
-    func onAgentEnd(context: Any?, agent: any Agent, result: AgentResult) async {
+    func onAgentEnd(context: AgentContext?, agent: any AgentRuntime, result: AgentResult) async {
         print("Agent completed: \(result.output)")
     }
 
-    func onLLMStart(context: Any?, agent: any Agent, systemPrompt: String, inputMessages: [MemoryMessage]) async {
+    func onLLMStart(context: AgentContext?, agent: any AgentRuntime, systemPrompt: String?, inputMessages: [MemoryMessage]) async {
         print("LLM call starting")
     }
 
-    func onLLMEnd(context: Any?, agent: any Agent, response: String, usage: InferenceResponse.TokenUsage?) async {
+    func onLLMEnd(context: AgentContext?, agent: any AgentRuntime, response: String, usage: InferenceResponse.TokenUsage?) async {
         print("LLM responded")
     }
 
-    func onToolStart(context: Any?, agent: any Agent, tool: any Tool, arguments: [String: SendableValue]) async {
-        print("Calling tool: \(tool.name)")
+    func onToolStart(context: AgentContext?, agent: any AgentRuntime, call: ToolCall) async {
+        print("Calling tool: \(call.toolName)")
     }
 
-    func onToolEnd(context: Any?, agent: any Agent, tool: any Tool, result: SendableValue) async {
-        print("Tool result: \(result)")
+    func onToolEnd(context: AgentContext?, agent: any AgentRuntime, result: ToolResult) async {
+        print("Tool result: \(result.output)")
     }
 
-    func onError(context: Any?, agent: any Agent, error: Error) async {
+    func onError(context: AgentContext?, agent: any AgentRuntime, error: Error) async {
         print("Error: \(error)")
     }
 }
@@ -766,11 +778,11 @@ let result = try await agent.run(input, hooks: MyHooks())
 
 | Scenario | Recommended Agent |
 |----------|------------------|
-| Simple tool calls | ToolCallingAgent |
+| Simple tool calls | Agent |
 | Step-by-step reasoning | ReActAgent |
 | Complex multi-step tasks | PlanAndExecuteAgent |
 | Debugging/tracing needed | ReActAgent |
-| Production reliability | ToolCallingAgent |
+| Production reliability | Agent |
 | Error recovery important | PlanAndExecuteAgent |
 
 ### Configuration Guidelines

@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import SwiftAgents
 
-@Suite("ToolCallingAgent Live Tool Call Streaming")
-struct ToolCallingAgentLiveToolCallStreamingTests {
+@Suite("Agent Live Tool Call Streaming")
+struct AgentLiveToolCallStreamingTests {
     @Test("Emits toolCallPartial before toolCallStarted when provider streams tool-call assembly")
     func emitsPartialUpdatesBeforeToolExecution() async throws {
         struct EchoTool: AnyJSONTool, Sendable {
@@ -105,7 +105,7 @@ struct ToolCallingAgentLiveToolCallStreamingTests {
             ],
         ])
 
-        let agent = ToolCallingAgent(
+        let agent = Agent(
             tools: [EchoTool()],
             configuration: .default.maxIterations(3),
             inferenceProvider: provider
@@ -199,8 +199,8 @@ struct ToolCallingAgentLiveToolCallStreamingTests {
                 tools _: [ToolSchema],
                 options _: InferenceOptions
             ) async throws -> InferenceResponse {
-                // If ToolCallingAgent falls back to the non-streaming path, this is called (and the test should fail).
-                throw AgentError.generationFailed(reason: "Expected ToolCallingAgent to use streamWithToolCalls(), but it called generateWithToolCalls()")
+                // If Agent falls back to the non-streaming path, this is called (and the test should fail).
+                throw AgentError.generationFailed(reason: "Expected Agent to use streamWithToolCalls(), but it called generateWithToolCalls()")
             }
 
             func streamWithToolCalls(
@@ -238,7 +238,7 @@ struct ToolCallingAgentLiveToolCallStreamingTests {
             ],
         ])
 
-        let agent = ToolCallingAgent(
+        let agent = Agent(
             tools: [EchoTool()],
             configuration: .default.maxIterations(3),
             inferenceProvider: ConduitProviderSelection.provider(provider)

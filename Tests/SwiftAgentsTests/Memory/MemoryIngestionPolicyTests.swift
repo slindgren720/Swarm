@@ -3,8 +3,8 @@ import Testing
 
 @Suite("Memory Ingestion Policy")
 struct MemoryIngestionPolicyTests {
-    @Test("ToolCallingAgent stores tool results in memory")
-    func toolCallingAgentStoresToolResults() async throws {
+    @Test("Agent stores tool results in memory")
+    func agentStoresToolResults() async throws {
         let tool = MockTool(name: "mock_tool", result: .string("ok"))
 
         let provider = MockInferenceProvider()
@@ -17,7 +17,7 @@ struct MemoryIngestionPolicyTests {
         ])
 
         let memory = MockAgentMemory()
-        let agent = ToolCallingAgent(
+        let agent = Agent(
             tools: [tool],
             configuration: .default.maxIterations(3),
             memory: memory,
@@ -46,7 +46,7 @@ struct MemoryIngestionPolicyTests {
         let provider = MockInferenceProvider(responses: ["Final Answer: ok"])
         let memory = MockAgentMemory()
 
-        let agent = ToolCallingAgent(
+        let agent = Agent(
             memory: memory,
             inferenceProvider: provider
         )
