@@ -17,6 +17,69 @@ SwiftAgents also includes SwiftUI-style DSLs for defining workflows:
 - `AgentBlueprint` (preferred, long-term) - orchestrations built with `@OrchestrationBuilder`.
 - `AgentLoopDefinition` (legacy, deprecated) - a loop DSL built with `@AgentLoopBuilder`, executed via `LoopAgent`.
 
+## Copy/Paste: Coding Agents Quick Start
+
+When you want **maximum leverage with minimum code**, use macros for tools + agent scaffolding, then compose with `AgentBlueprint`.
+
+### 1) Define a tool with `@Tool`
+
+```swift
+import SwiftAgents
+
+@Tool("Echoes a string back to the caller.")
+struct EchoTool {
+    @Parameter("Text to echo")
+    var text: String
+
+    func execute() async throws -> String {
+        text
+    }
+}
+```
+
+### 2) Define an agent with `@AgentActor`
+
+```swift
+import SwiftAgents
+
+@AgentActor(instructions: "You are a concise coding assistant.")
+actor CodingAgent {
+    func process(_ input: String) async throws -> String {
+        "Received: \(input)"
+    }
+}
+
+let agent = CodingAgent.Builder()
+    .addTool(EchoTool())
+    .configuration(.default)
+    .build()
+
+let result = try await agent.run("Hello")
+print(result.output)
+```
+
+### 3) Compose multiple agents with `AgentBlueprint`
+
+```swift
+import SwiftAgents
+
+struct Workflow: AgentBlueprint {
+    let coder: any AgentRuntime
+    let reviewer: any AgentRuntime
+
+    @OrchestrationBuilder var body: some OrchestrationStep {
+        Sequential {
+            coder
+            reviewer
+        }
+    }
+}
+
+let workflow = Workflow(coder: coder, reviewer: reviewer)
+let final = try await workflow.run("Implement feature X, then review it.")
+print(final.output)
+```
+
 ## Runtime: AgentRuntime Protocol
 
 The `AgentRuntime` protocol defines the fundamental contract that all runtime agent implementations must satisfy:

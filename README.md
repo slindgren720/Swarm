@@ -25,6 +25,72 @@ SwiftAgents provides everything you need to build AI agents: autonomous reasonin
 
 ---
 
+## For Coding Agents
+
+### Retrieving Context (Sessions + Memory)
+
+SwiftAgents intentionally keeps **context retrieval** explicit and inspectable. In practice, you’ll pull context from either:
+
+- **Session** (conversation history): `getItems(limit:)`
+- **Memory** (RAG / summaries / recent-window): `context(for:tokenLimit:)` and `allMessages()`
+
+```swift
+// Session history (for UIs, debugging, or custom prompt building)
+let history = try await session.getItems(limit: 20)
+
+// Memory context string (what you want the model to “see” as context)
+let context = await memory.context(for: "billing policy", tokenLimit: 1_200)
+
+// Raw memory messages (for inspection / tests)
+let messages = await memory.allMessages()
+```
+
+If your memory conforms to `MemoryPromptDescriptor` (e.g. `WaxMemory`), you can also expose UI labels/guidance:
+
+```swift
+if let descriptor = memory as? any MemoryPromptDescriptor {
+    print(descriptor.memoryPromptTitle)
+    print(descriptor.memoryPromptGuidance ?? "")
+}
+```
+
+### Copy/Paste Prompts
+
+Use these prompts verbatim in Claude Code / Codex / ChatGPT when working with this repo or integrating SwiftAgents.
+
+#### 1) Repo Orientation
+
+```text
+You are a coding agent integrating SwiftAgents.
+Please:
+1) Read AGENTS.md and README.md.
+2) Summarize the preferred API surface (AgentBlueprint + @Tool + @AgentActor).
+3) Point me to the 5 most relevant docs pages for orchestration + tools + memory.
+4) Give me a minimal “hello world agent” that compiles (no external services).
+```
+
+#### 2) “How do I retrieve context?”
+
+```text
+In SwiftAgents, show me how to retrieve:
+- session history (Session.getItems)
+- model context from memory (Memory.context(for:tokenLimit:))
+- raw messages (Memory.allMessages)
+Include one example using WaxMemory and one using ConversationMemory.
+```
+
+#### 3) Compose a Complex Workflow
+
+```text
+Design an AgentBlueprint for: plan -> implement -> review -> summarize.
+Constraints:
+- Use ToolCallingAgent runtime steps.
+- Use Parallel for implement+tests where appropriate.
+- Use Router to pick specialist agents.
+- Keep it hard to misuse (types, names, minimal magic).
+Return a single Swift file with the blueprint + setup code.
+```
+
 ## Installation
 
 ### Swift Package Manager

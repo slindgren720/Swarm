@@ -32,15 +32,19 @@ if useLocalDependencies {
     packageDependencies.append(
         .package(
             url: "https://github.com/christopherkarani/Wax.git",
-            branch: "main"
+            from: "0.1.3"
         )
     )
-    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.0"))
+    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.1"))
 }
 
 if includeHive {
-    // NOTE: Opt-in; requires a local checkout of Hive.
-    packageDependencies.append(.package(path: "../Hive/libs/hive"))
+    if useLocalDependencies {
+        // NOTE: Opt-in; requires a local checkout of Hive.
+        packageDependencies.append(.package(path: "../Hive/libs/hive"))
+    } else {
+        packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
+    }
 }
 
 var packageTargets: [Target] = [
