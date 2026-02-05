@@ -125,7 +125,7 @@ public protocol OutputGuardrail: Sendable {
     var name: String { get }
 
     /// Validates an agent's output.
-    func validate(_ output: String, agent: any Agent, context: AgentContext?) async throws -> GuardrailResult
+    func validate(_ output: String, agent: any AgentRuntime, context: AgentContext?) async throws -> GuardrailResult
 }
 ```
 
@@ -137,7 +137,7 @@ public protocol OutputGuardrail: Sendable {
 struct ContentFilterGuardrail: OutputGuardrail {
     let name = "ContentFilter"
 
-    func validate(_ output: String, agent: any Agent, context: AgentContext?) async throws -> GuardrailResult {
+    func validate(_ output: String, agent: any AgentRuntime, context: AgentContext?) async throws -> GuardrailResult {
         if output.contains("inappropriate") {
             return .tripwire(message: "Inappropriate content detected")
         }
@@ -226,7 +226,7 @@ public struct ToolGuardrailData: Sendable {
     public let arguments: [String: SendableValue]
 
     /// The agent executing the tool, if available.
-    public let agent: (any Agent)?
+    public let agent: (any AgentRuntime)?
 
     /// The orchestration context, if available.
     public let context: AgentContext?

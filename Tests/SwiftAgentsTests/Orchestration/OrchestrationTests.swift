@@ -135,4 +135,49 @@ struct OrchestrationTests {
         #expect(result.output == "ping")
         #expect(result.metadata["parallel.error_count"]?.intValue == 1)
     }
+
+
+    @Test("Orchestration records engine metadata")
+    func orchestrationRecordsEngineMetadata() async throws {
+        let workflow = Orchestration {
+            Transform { $0 }
+        }
+
+        let result = try await workflow.run("ping")
+        #if SWIFTAGENTS_HIVE_RUNTIME && canImport(HiveCore)
+        #expect(result.metadata["orchestration.engine"]?.stringValue == "hive")
+        #else
+        #expect(result.metadata["orchestration.engine"]?.stringValue == "swift")
+        #endif
+    }
+
+    @Test("Orchestration stream emits per-step iteration events")
+    func orchestrationStreamIterationEvents() async throws {
+        let workflow = Orchestration {
+            Transform { $0 + "1" }
+            Transform { $0 + "2" }
+            Transform { $0 + "3" }
+        }
+
+        var started: [Int] = []
+        var completed: [Int] = []
+        var finalOutput: String? = nil
+
+        for try await event in workflow.stream("x") {
+            switch event {
+            case .iterationStarted(let number):
+                started.append(number)
+            case .iterationCompleted(let number):
+                completed.append(number)
+            case .completed(let result):
+                finalOutput = result.output
+            default:
+                break
+            }
+        }
+
+        #expect(started == [1, 2, 3])
+        #expect(completed == [1, 2, 3])
+        #expect(finalOutput == "x123")
+    }
 }

@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Use with any API that accepts an `InferenceProvider`:
 /// ```swift
-/// let agent = ToolCallingAgent(inferenceProvider: .openAI(apiKey: "..."))
+/// let agent = Agent(.openAI(key: "..."))
 /// ```
 ///
 /// Advanced customization is intentionally hidden behind `.advanced { ... }`.
@@ -23,6 +23,13 @@ public enum LLM: Sendable, InferenceProvider {
         .openAI(OpenAIConfig(apiKey: apiKey, model: model))
     }
 
+    public static func openAI(
+        key: String,
+        model: String = "gpt-4o-mini"
+    ) -> LLM {
+        openAI(apiKey: key, model: model)
+    }
+
     public static func anthropic(
         apiKey: String,
         model: String = AnthropicModelID.claude35Sonnet.rawValue
@@ -30,11 +37,25 @@ public enum LLM: Sendable, InferenceProvider {
         .anthropic(AnthropicConfig(apiKey: apiKey, model: model))
     }
 
+    public static func anthropic(
+        key: String,
+        model: String = AnthropicModelID.claude35Sonnet.rawValue
+    ) -> LLM {
+        anthropic(apiKey: key, model: model)
+    }
+
     public static func openRouter(
         apiKey: String,
         model: String = "anthropic/claude-3.5-sonnet"
     ) -> LLM {
         .openRouter(OpenRouterConfig(apiKey: apiKey, model: model))
+    }
+
+    public static func openRouter(
+        key: String,
+        model: String = "anthropic/claude-3.5-sonnet"
+    ) -> LLM {
+        openRouter(apiKey: key, model: model)
     }
 
     // MARK: - Progressive Disclosure
@@ -141,12 +162,24 @@ public extension InferenceProvider where Self == LLM {
         LLM.openAI(apiKey: apiKey, model: model)
     }
 
+    static func openAI(key: String, model: String = "gpt-4o-mini") -> LLM {
+        LLM.openAI(key: key, model: model)
+    }
+
     static func anthropic(apiKey: String, model: String = AnthropicModelID.claude35Sonnet.rawValue) -> LLM {
         LLM.anthropic(apiKey: apiKey, model: model)
     }
 
+    static func anthropic(key: String, model: String = AnthropicModelID.claude35Sonnet.rawValue) -> LLM {
+        LLM.anthropic(key: key, model: model)
+    }
+
     static func openRouter(apiKey: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM {
         LLM.openRouter(apiKey: apiKey, model: model)
+    }
+
+    static func openRouter(key: String, model: String = "anthropic/claude-3.5-sonnet") -> LLM {
+        LLM.openRouter(key: key, model: model)
     }
 }
 

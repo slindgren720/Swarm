@@ -23,6 +23,10 @@ SwiftAgents provides everything you need to build AI agents: autonomous reasonin
 - **MCP** — Model Context Protocol integration
 - **Cross-Platform** — iOS, macOS, watchOS, tvOS, visionOS, and Linux
 
+## Runtime (Hive)
+
+On macOS/iOS, you can opt into Hive graph execution by setting `SWIFTAGENTS_HIVE_RUNTIME=1` at build time. The default executor is the built-in Swift runtime. If a sibling Hive checkout exists at `../Hive`, SwiftAgents auto-uses it; set `SWIFTAGENTS_USE_LOCAL_HIVE=0` to force the remote package.
+
 ---
 
 ## For Coding Agents
@@ -84,7 +88,7 @@ Include one example using WaxMemory and one using ConversationMemory.
 ```text
 Design an AgentBlueprint for: plan -> implement -> review -> summarize.
 Constraints:
-- Use ToolCallingAgent runtime steps.
+- Use Agent runtime steps.
 - Use Parallel for implement+tests where appropriate.
 - Use Router to pick specialist agents.
 - Keep it hard to misuse (types, names, minimal magic).
@@ -178,15 +182,15 @@ Start with runtime agents for model calls, then compose them with the SwiftUI-st
 ```swift
 import SwiftAgents
 
-let provider = MyInferenceProvider()
+let provider: any InferenceProvider = .anthropic(key: "ANTHROPIC_API_KEY")
 
 struct CustomerService: AgentBlueprint {
-    let billing = ToolCallingAgent(
+    let billing = Agent(
         tools: [CalculatorTool()],
         instructions: "You are billing support. Be concise."
     )
 
-    let general = ToolCallingAgent(
+    let general = Agent(
         instructions: "You are general customer support."
     )
 
@@ -218,9 +222,11 @@ print(result.output)
 ```
 
 Notes:
-- `AgentBlueprint` is the preferred SwiftUI-style workflow DSL; embed `AgentRuntime` steps (ToolCallingAgent/ReActAgent/PlanAndExecuteAgent).
+- `AgentBlueprint` is the preferred SwiftUI-style workflow DSL; embed `AgentRuntime` steps (Agent/ReActAgent/PlanAndExecuteAgent).
 - The legacy loop DSL (`AgentLoopDefinition` + `Relay()`/`Generate()`) is deprecated for new code.
 - The actor macro for boilerplate-free runtime agents is `@AgentActor` (renamed from `@Agent`).
+- You can also pass a provider directly: `let agent = Agent(.anthropic(key: "ANTHROPIC_API_KEY"))`.
+- If you don’t provide an inference provider, `Agent` will try Apple Foundation Models (on-device) when available; otherwise `Agent.run(...)` throws `AgentError.inferenceProviderUnavailable`.
 
 ---
 
@@ -259,12 +265,12 @@ for try await event in streamingAgent.stream("Explain quantum computing") {
 Define focused runtime agents and let a supervisor route requests based on routing strategy:
 
 ```swift
-let mathAgent = ToolCallingAgent(
+let mathAgent = Agent(
     tools: [CalculatorTool()],
     instructions: "Solve billing math crisply."
 )
 
-let weatherAgent = ToolCallingAgent(
+let weatherAgent = Agent(
     tools: [WeatherTool()],
     instructions: "Report weather succinctly."
 )
@@ -288,7 +294,7 @@ let supervisor = SupervisorAgent(
         (name: weatherDesc.name, agent: weatherAgent, description: weatherDesc)
     ],
     routingStrategy: strategy,
-    fallbackAgent: ToolCallingAgent(instructions: "You are general customer support.")
+    fallbackAgent: Agent(instructions: "You are general customer support.")
 )
 
 let result = try await supervisor.run("What is 15 × 23?")
@@ -321,7 +327,7 @@ Guard inputs and outputs in a blueprint by surrounding a runtime agent step:
 
 ```swift
 struct GuardedAgent: AgentBlueprint {
-    let core = ToolCallingAgent(instructions: "Only pass safe content through.")
+    let core = Agent(instructions: "Only pass safe content through.")
 
     @OrchestrationBuilder var body: some OrchestrationStep {
         Guard(.input) {
@@ -354,7 +360,7 @@ try await client.addServer(server)
 
 let mcpTools = try await client.getAllTools()
 
-let researchAgent = ToolCallingAgent(
+let researchAgent = Agent(
     tools: mcpTools,
     instructions: "Research the topic with MCP tools."
 )
@@ -381,7 +387,7 @@ struct CalculatorTool {
     }
 }
 
-let billingAgent = ToolCallingAgent(
+let billingAgent = Agent(
     tools: [CalculatorTool()],
     instructions: "Use calculator for numeric requests."
 )
@@ -391,7 +397,7 @@ let billingResult = try await billingAgent
     .run("What is 25% of 200?")
 ```
 
-ToolCallingAgent (and ReActAgent / PlanAndExecuteAgent) bridge typed tools to the `AnyJSONTool` ABI so the model can plan tool calls, pass structured parameters, and receive typed results without extra plumbing.
+Agent (and ReActAgent / PlanAndExecuteAgent) bridge typed tools to the `AnyJSONTool` ABI so the model can plan tool calls, pass structured parameters, and receive typed results without extra plumbing.
 
 ### Resilience
 
@@ -402,7 +408,7 @@ let resilientAgent = CustomerService()
     .environment(\.inferenceProvider, provider)
     .withRetry(.exponentialBackoff(maxAttempts: 3, baseDelay: .seconds(1)))
     .withCircuitBreaker(threshold: 5, resetTimeout: .seconds(60))
-    .withFallback(ToolCallingAgent(instructions: "You are general customer support."))
+    .withFallback(Agent(instructions: "You are general customer support."))
     .withTimeout(.seconds(30))
 
 let final = try await resilientAgent.run("Handle billing help urgently.")
@@ -424,7 +430,7 @@ print(final.output)
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
 │  │   Agents    │ │   Memory    │ │    Tools    │       │
 │  │ ReAct, Plan │ │ Conversation│ │ @Tool macro │       │
-│  │ ToolCalling │ │ Vector, Sum │ │ Registry    │       │
+│  │ Agent       │ │ Vector, Sum │ │ Registry    │       │
 │  └─────────────┘ └─────────────┘ └─────────────┘       │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
 │  │Orchestration│ │ Guardrails  │ │    MCP      │       │

@@ -1,28 +1,38 @@
-// ToolCallingAgent.swift
+// Agent.swift
 // SwiftAgents Framework
 //
 // Tool-calling agent that uses structured LLM tool calling APIs.
 
 import Foundation
 
-// MARK: - ToolCallingAgent
+// MARK: - Agent
 
 /// An agent that uses structured LLM tool calling APIs for reliable tool invocation.
 ///
-/// Unlike ReActAgent which parses tool calls from text output, ToolCallingAgent
+/// Unlike ReActAgent which parses tool calls from text output, Agent
 /// leverages the LLM's native tool calling capabilities via `generateWithToolCalls()`
 /// for more reliable and type-safe tool invocation.
 ///
+/// If no inference provider is configured, Agent will try to use Apple Foundation Models
+/// (on-device) when available. If Foundation Models are unavailable and no provider is set,
+/// Agent throws `AgentError.inferenceProviderUnavailable`.
+///
+/// Provider resolution order is:
+/// 1. An explicit provider passed to `Agent(...)` (including `Agent(_:)`)
+/// 2. A provider set via `.environment(\.inferenceProvider, ...)`
+/// 3. Apple Foundation Models (on-device), if available
+/// 4. Otherwise, throw `AgentError.inferenceProviderUnavailable`
+///
 /// The agent follows a loop-based execution pattern:
 /// 1. Build prompt with system instructions + conversation history
-    /// 2. Call provider with tool schemas
+/// 2. Call provider with tool schemas
 /// 3. If tool calls requested, execute each tool and add results to history
 /// 4. If no tool calls, return content as final answer
 /// 5. Repeat until done or max iterations reached
 ///
 /// Example:
 /// ```swift
-/// let agent = ToolCallingAgent(
+/// let agent = Agent(
 ///     tools: [WeatherTool(), CalculatorTool()],
 ///     instructions: "You are a helpful assistant with access to tools."
 /// )
@@ -30,7 +40,7 @@ import Foundation
 /// let result = try await agent.run("What's the weather in Tokyo?")
 /// print(result.output)
 /// ```
-public actor ToolCallingAgent: AgentRuntime {
+public actor Agent: AgentRuntime {
     // MARK: Public
 
     // MARK: - Agent Protocol Properties
@@ -50,7 +60,7 @@ public actor ToolCallingAgent: AgentRuntime {
 
     // MARK: - Initialization
 
-    /// Creates a new ToolCallingAgent.
+    /// Creates a new Agent.
     /// - Parameters:
     ///   - tools: Tools available to the agent. Default: []
     ///   - instructions: System instructions defining agent behavior. Default: ""
@@ -87,7 +97,39 @@ public actor ToolCallingAgent: AgentRuntime {
         toolRegistry = ToolRegistry(tools: tools)
     }
 
-    /// Creates a new ToolCallingAgent with typed tools.
+    /// Convenience initializer that takes an unlabeled inference provider.
+    ///
+    /// This enables an opinionated, easy setup:
+    /// ```swift
+    /// let agent = Agent(.anthropic(key: "..."))
+    /// ```
+    public init(
+        _ inferenceProvider: any InferenceProvider,
+        tools: [any AnyJSONTool] = [],
+        instructions: String = "",
+        configuration: AgentConfiguration = .default,
+        memory: (any Memory)? = nil,
+        tracer: (any Tracer)? = nil,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffs: [AnyHandoffConfiguration] = []
+    ) {
+        self.init(
+            tools: tools,
+            instructions: instructions,
+            configuration: configuration,
+            memory: memory,
+            inferenceProvider: inferenceProvider,
+            tracer: tracer,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: handoffs
+        )
+    }
+
+    /// Creates a new Agent with typed tools.
     /// - Parameters:
     ///   - tools: Typed tools available to the agent. Default: []
     ///   - instructions: System instructions defining agent behavior. Default: ""
@@ -146,7 +188,7 @@ public actor ToolCallingAgent: AgentRuntime {
 
         let tracing = TracingHelper(
             tracer: activeTracer,
-            agentName: configuration.name.isEmpty ? "ToolCallingAgent" : configuration.name
+            agentName: configuration.name.isEmpty ? "Agent" : configuration.name
         )
         await tracing.traceStart(input: input)
 
@@ -300,6 +342,31 @@ public actor ToolCallingAgent: AgentRuntime {
     private var currentTask: Task<Void, Never>?
     private let toolRegistry: ToolRegistry
 
+    // MARK: - Inference Provider Resolution
+
+    private func resolvedInferenceProvider() throws -> any InferenceProvider {
+        if let inferenceProvider {
+            return inferenceProvider
+        }
+
+        if let environmentProvider = AgentEnvironmentValues.current.inferenceProvider {
+            return environmentProvider
+        }
+
+        if let foundationModelsProvider = DefaultInferenceProviderFactory.makeFoundationModelsProviderIfAvailable() {
+            return foundationModelsProvider
+        }
+
+        throw AgentError.inferenceProviderUnavailable(
+            reason: """
+            No inference provider configured and Apple Foundation Models are unavailable.
+
+            Provide an inference provider explicitly (e.g. `Agent(.anthropic(key: \"...\"))`) \
+            or via `.environment(\\.inferenceProvider, ...)`.
+            """
+        )
+    }
+
     // MARK: - Tool Calling Loop Implementation
 
     private func executeToolCallingLoop(
@@ -311,6 +378,7 @@ public actor ToolCallingAgent: AgentRuntime {
     ) async throws -> String {
         var iteration = 0
         let startTime = ContinuousClock.now
+        let provider = try resolvedInferenceProvider()
 
         // Retrieve relevant context from memory (enables RAG for VectorMemory)
         let activeMemory = memory ?? AgentEnvironmentValues.current.memory
@@ -329,6 +397,8 @@ public actor ToolCallingAgent: AgentRuntime {
         let systemMessage = buildSystemMessage(memory: activeMemory, memoryContext: memoryContext)
 
         let enableStreaming = configuration.enableStreaming && hooks != nil
+        let toolStreamingProvider = provider as? any ToolCallStreamingInferenceProvider
+        let useToolStreaming = enableStreaming && toolStreamingProvider != nil
 
         while iteration < configuration.maxIterations {
             iteration += 1
@@ -343,15 +413,13 @@ public actor ToolCallingAgent: AgentRuntime {
             // If no tools defined, generate without tool calling
             if toolSchemas.isEmpty {
                 return try await generateWithoutTools(
+                    provider: provider,
                     prompt: prompt,
                     systemPrompt: systemMessage,
                     enableStreaming: enableStreaming,
                     hooks: hooks
                 )
             }
-
-            let toolStreamingProvider = (inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider) as? any ToolCallStreamingInferenceProvider
-            let useToolStreaming = enableStreaming && toolStreamingProvider != nil
 
             // Generate response with tool calls
             let response = if useToolStreaming, let provider = toolStreamingProvider {
@@ -364,6 +432,7 @@ public actor ToolCallingAgent: AgentRuntime {
                 )
             } else {
                 try await generateWithTools(
+                    provider: provider,
                     prompt: prompt,
                     tools: toolSchemas,
                     systemPrompt: systemMessage,
@@ -429,16 +498,12 @@ public actor ToolCallingAgent: AgentRuntime {
 
     /// Generates a response without tool calling.
     private func generateWithoutTools(
+        provider: any InferenceProvider,
         prompt: String,
         systemPrompt: String,
         enableStreaming: Bool = false,
         hooks: (any RunHooks)?
     ) async throws -> String {
-        let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
-        guard let provider else {
-            throw AgentError.inferenceProviderUnavailable(reason: "No inference provider configured.")
-        }
-
         await hooks?.onLLMStart(context: nil, agent: self, systemPrompt: systemPrompt, inputMessages: [MemoryMessage.user(prompt)])
 
         let content: String
@@ -578,19 +643,13 @@ public actor ToolCallingAgent: AgentRuntime {
     // MARK: - Response Generation
 
     private func generateWithTools(
+        provider: any InferenceProvider,
         prompt: String,
         tools: [ToolSchema],
         systemPrompt: String,
         hooks: (any RunHooks)? = nil,
         emitOutputTokens: Bool = false
     ) async throws -> InferenceResponse {
-        let provider = inferenceProvider ?? AgentEnvironmentValues.current.inferenceProvider
-        guard let provider else {
-            throw AgentError.inferenceProviderUnavailable(
-                reason: "No inference provider configured. Please provide an InferenceProvider."
-            )
-        }
-
         let options = configuration.inferenceOptions
 
         // Notify hooks of LLM start
@@ -665,16 +724,16 @@ public actor ToolCallingAgent: AgentRuntime {
     }
 }
 
-// MARK: ToolCallingAgent.Builder
+// MARK: Agent.Builder
 
-public extension ToolCallingAgent {
-    /// Builder for creating ToolCallingAgent instances with a fluent API.
+public extension Agent {
+    /// Builder for creating Agent instances with a fluent API.
     ///
     /// Uses value semantics (struct) for Swift 6 concurrency safety.
     ///
     /// Example:
     /// ```swift
-    /// let agent = ToolCallingAgent.Builder()
+    /// let agent = Agent.Builder()
     ///     .tools([WeatherTool(), CalculatorTool()])
     ///     .instructions("You are a helpful assistant.")
     ///     .configuration(.default.maxIterations(5))
@@ -860,9 +919,9 @@ public extension ToolCallingAgent {
         }
 
         /// Builds the agent.
-        /// - Returns: A new ToolCallingAgent instance.
-        public func build() -> ToolCallingAgent {
-            ToolCallingAgent(
+        /// - Returns: A new Agent instance.
+        public func build() -> Agent {
+            Agent(
                 tools: _tools,
                 instructions: _instructions,
                 configuration: _configuration,
@@ -891,14 +950,14 @@ public extension ToolCallingAgent {
     }
 }
 
-// MARK: - ToolCallingAgent DSL Extension
+// MARK: - Agent DSL Extension
 
-public extension ToolCallingAgent {
-    /// Creates a ToolCallingAgent using the declarative builder DSL.
+public extension Agent {
+    /// Creates an Agent using the declarative builder DSL.
     ///
     /// Example:
     /// ```swift
-    /// let agent = ToolCallingAgent {
+    /// let agent = Agent {
     ///     Instructions("You are a helpful assistant.")
     ///
     ///     Tools {

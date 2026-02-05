@@ -1,5 +1,27 @@
 # Migration Guide
 
+## ToolCallingAgent → Agent (Breaking)
+
+The default tool-calling runtime agent has been renamed for ergonomics.
+
+### Breaking Change
+
+- `ToolCallingAgent` → `Agent`
+
+### Migration
+
+```swift
+// Before
+let agent = ToolCallingAgent(inferenceProvider: .anthropic(apiKey: "ANTHROPIC_API_KEY"))
+
+// After
+let agent = Agent(.anthropic(key: "ANTHROPIC_API_KEY"))
+```
+
+> Note: If you don't provide an inference provider, `Agent` will try Apple Foundation Models (on-device) when available. If Foundation Models are unavailable, `Agent.run(...)` throws `AgentError.inferenceProviderUnavailable`.
+
+---
+
 ## SwiftAgents 2.x → 2.x (Agent Macro Rename)
 
 The public macro used to generate agent boilerplate has been renamed.
@@ -133,7 +155,7 @@ extension ToolRegistry {
     func execute<T>(
         ofType type: T.Type,
         arguments: [String: SendableValue],
-        agent: (any Agent)? = nil,
+        agent: (any AgentRuntime)? = nil,
         context: AgentContext? = nil,
         hooks: (any RunHooks)? = nil
     ) async throws -> SendableValue where T: Tool
