@@ -15,11 +15,14 @@ SwiftAgents provides everything you need to build AI agents: autonomous reasonin
 
 - **Agents** — `AgentRuntime` implementations (ToolCalling, ReAct, PlanAndExecute) and `@AgentActor` macro
 - **Workflows** — SwiftUI-style `AgentBlueprint` orchestration (preferred) + legacy loop DSL (deprecated)
-- **Tools** — Typed `Tool` API, `@Tool` macro, and `AnyJSONTool` ABI
+- **Tools** — Typed `Tool` API, `@Tool` macro, `FunctionTool` closures, and `AnyJSONTool` ABI
+- **Runner** — Static `Runner.run()` / `Runner.stream()` entry points separating definition from execution
+- **Agent Composition** — Use any agent as a tool via `.asTool()` for hierarchical delegation
 - **Memory** — Conversation, summary, and vector memory systems
-- **Multi-Agent** — Supervisor routing, chains, and parallel execution
+- **Multi-Agent** — Supervisor routing, chains, handoffs, and parallel execution
 - **Streaming** — Real-time event streaming for responsive UIs
 - **Guardrails** — Input/output validation for safe AI interactions
+- **Observability** — Default tracing out of the box, opt-out with `defaultTracingEnabled: false`
 - **MCP** — Model Context Protocol integration
 - **Cross-Platform** — iOS, macOS, watchOS, tvOS, visionOS, and Linux
 
@@ -186,11 +189,13 @@ let provider: any InferenceProvider = .anthropic(key: "ANTHROPIC_API_KEY")
 
 struct CustomerService: AgentBlueprint {
     let billing = Agent(
+        name: "Billing",
         tools: [CalculatorTool()],
         instructions: "You are billing support. Be concise."
     )
 
     let general = Agent(
+        name: "General",
         instructions: "You are general customer support."
     )
 
@@ -266,11 +271,13 @@ Define focused runtime agents and let a supervisor route requests based on routi
 
 ```swift
 let mathAgent = Agent(
+    name: "Math",
     tools: [CalculatorTool()],
     instructions: "Solve billing math crisply."
 )
 
 let weatherAgent = Agent(
+    name: "Weather",
     tools: [WeatherTool()],
     instructions: "Report weather succinctly."
 )
@@ -399,6 +406,114 @@ let billingResult = try await billingAgent
 
 Agent (and ReActAgent / PlanAndExecuteAgent) bridge typed tools to the `AnyJSONTool` ABI so the model can plan tool calls, pass structured parameters, and receive typed results without extra plumbing.
 
+#### FunctionTool — Inline Closures
+
+For simple one-off tools, skip the struct ceremony with `FunctionTool`:
+
+```swift
+let getWeather = FunctionTool(
+    name: "get_weather",
+    description: "Gets weather for a city",
+    parameters: [
+        ToolParameter(name: "city", description: "City name", type: .string, isRequired: true)
+    ]
+) { args in
+    let city = try args.require("city", as: String.self)
+    return .string("72F in \(city)")
+}
+
+let agent = Agent(name: "Assistant", tools: [getWeather], instructions: "Help with weather.")
+```
+
+`FunctionTool` conforms to `AnyJSONTool` and works anywhere a typed tool does — agent registration, blueprints, and tool registries.
+
+#### Runtime Tool Toggling
+
+Tools support an `isEnabled` property for conditional availability. Disabled tools are excluded from LLM schemas and rejected at execution time:
+
+```swift
+struct AdminTool: AnyJSONTool {
+    let name = "admin_reset"
+    let description = "Resets user data"
+    let parameters: [ToolParameter] = []
+    var isEnabled: Bool { UserDefaults.standard.bool(forKey: "isAdmin") }
+
+    func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
+        // ...
+    }
+}
+```
+
+### Runner — Execution Entry Point
+
+`Runner` provides a static API for agent execution, cleanly separating agent definition from execution concerns:
+
+```swift
+let agent = Agent(name: "Assistant", instructions: "You are helpful.")
+
+// Simple execution:
+let result = try await Runner.run(agent, input: "Hello!")
+
+// With session:
+let result = try await Runner.run(agent, input: "Hello!", session: mySession)
+
+// Streaming:
+for try await event in Runner.stream(agent, input: "What's the weather?") {
+    switch event {
+    case .chunk(let text):
+        print(text, terminator: "")
+    default:
+        break
+    }
+}
+```
+
+### Agent Composition — Agents as Tools
+
+Use any agent as a callable sub-tool for another agent via `.asTool()`. The inner agent runs with the provided input and returns its output as the tool result:
+
+```swift
+let researcher = Agent(
+    name: "Researcher",
+    instructions: "You research topics thoroughly.",
+    tools: [searchTool]
+)
+
+let writer = Agent(
+    name: "Writer",
+    instructions: "Use the researcher for facts, then write clearly.",
+    tools: [researcher.asTool()]
+)
+
+let result = try await Runner.run(writer, input: "Write about quantum computing")
+```
+
+This enables hierarchical agent patterns without full orchestration infrastructure like `Swarm` or `SupervisorAgent`.
+
+### Handoffs
+
+Pass agents directly as handoff targets — no manual `HandoffConfiguration` wrapping needed:
+
+```swift
+let billing = Agent(name: "Billing", instructions: "Handle billing questions.")
+let support = Agent(name: "Support", instructions: "Handle support requests.")
+
+let triage = Agent(
+    name: "Triage",
+    instructions: "Route requests to billing or support.",
+    handoffAgents: [billing, support]
+)
+```
+
+When using standalone `Agent` (outside `Swarm`), handoffs automatically appear as callable tools (e.g., `transfer_to_billing`). For fine-grained control, use `.asHandoff()`:
+
+```swift
+let handoff = billing.asHandoff(
+    toolName: "transfer_to_billing",
+    description: "Transfer billing questions"
+)
+```
+
 ### Resilience
 
 Wrap runtime agents (or blueprint executions) with retry, timeout, fallback, and circuit-breaker behaviors:
@@ -426,17 +541,24 @@ print(final.output)
 │                    Your Application                      │
 │         (iOS, macOS, watchOS, tvOS, visionOS, Linux)    │
 ├─────────────────────────────────────────────────────────┤
+│                 Runner.run() / .stream()                 │
+├─────────────────────────────────────────────────────────┤
 │                      SwiftAgents                         │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
 │  │   Agents    │ │   Memory    │ │    Tools    │       │
 │  │ ReAct, Plan │ │ Conversation│ │ @Tool macro │       │
-│  │ Agent       │ │ Vector, Sum │ │ Registry    │       │
+│  │ Agent       │ │ Vector, Sum │ │ FunctionTool│       │
 │  └─────────────┘ └─────────────┘ └─────────────┘       │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐       │
-│  │Orchestration│ │ Guardrails  │ │    MCP      │       │
-│  │ Supervisor  │ │ Input/Output│ │ Client/Srv  │       │
-│  │ Chains      │ │ Validation  │ │ Protocol    │       │
+│  │Orchestration│ │ Guardrails  │ │Observability│       │
+│  │ Supervisor  │ │ Input/Output│ │ Tracing     │       │
+│  │ Handoffs    │ │ Validation  │ │ Metrics     │       │
 │  └─────────────┘ └─────────────┘ └─────────────┘       │
+│  ┌─────────────┐ ┌─────────────┐                        │
+│  │    MCP      │ │ AgentTool   │                        │
+│  │ Client/Srv  │ │ .asTool()   │                        │
+│  │ Protocol    │ │ Composition │                        │
+│  └─────────────┘ └─────────────┘                        │
 ├─────────────────────────────────────────────────────────┤
 │              InferenceProvider Protocol                  │
 │    (Foundation Models / SOTA Models / Local )        │

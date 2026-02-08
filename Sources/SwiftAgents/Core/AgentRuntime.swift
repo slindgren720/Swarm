@@ -29,6 +29,12 @@ import Foundation
 /// print(result.output)
 /// ```
 public protocol AgentRuntime: Sendable {
+    /// The display name of this agent.
+    ///
+    /// Returns the agent's configured name. Used for logging, tracing,
+    /// handoff identification, and multi-agent coordination.
+    nonisolated var name: String { get }
+
     /// The tools available to this agent.
     nonisolated var tools: [any AnyJSONTool] { get }
 
@@ -109,6 +115,9 @@ public protocol AgentRuntime: Sendable {
 // MARK: - Agent Protocol Extensions
 
 public extension AgentRuntime {
+    /// Default name derived from configuration.
+    nonisolated var name: String { configuration.name }
+
     /// Default memory implementation (none).
     nonisolated var memory: (any Memory)? { nil }
 

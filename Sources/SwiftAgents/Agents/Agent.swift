@@ -141,8 +141,8 @@ public actor Agent: AgentRuntime {
     ///   - outputGuardrails: Output validation guardrails. Default: []
     ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
     ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: []
-    public init<T: Tool>(
-        tools: [T] = [],
+    public init(
+        tools: [some Tool] = [],
         instructions: String = "",
         configuration: AgentConfiguration = .default,
         memory: (any Memory)? = nil,
@@ -168,6 +168,64 @@ public actor Agent: AgentRuntime {
         )
     }
 
+    /// Creates a new Agent with simplified handoff declaration.
+    ///
+    /// This convenience initializer accepts an array of `AgentRuntime` conforming agents
+    /// and automatically wraps each one as an `AnyHandoffConfiguration`, simplifying
+    /// multi-agent orchestration setup.
+    ///
+    /// Example:
+    /// ```swift
+    /// let triageAgent = Agent(
+    ///     instructions: "Route requests to the right specialist.",
+    ///     handoffAgents: [billingAgent, supportAgent, salesAgent]
+    /// )
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - tools: Tools available to the agent. Default: []
+    ///   - instructions: System instructions defining agent behavior. Default: ""
+    ///   - configuration: Agent configuration settings. Default: .default
+    ///   - memory: Optional memory system. Default: nil
+    ///   - inferenceProvider: Optional custom inference provider. Default: nil
+    ///   - tracer: Optional tracer for observability. Default: nil
+    ///   - inputGuardrails: Input validation guardrails. Default: []
+    ///   - outputGuardrails: Output validation guardrails. Default: []
+    ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
+    ///   - handoffAgents: Agents to hand off to, automatically wrapped as handoff configurations.
+    public init(
+        tools: [any AnyJSONTool] = [],
+        instructions: String = "",
+        configuration: AgentConfiguration = .default,
+        memory: (any Memory)? = nil,
+        inferenceProvider: (any InferenceProvider)? = nil,
+        tracer: (any Tracer)? = nil,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffAgents: [any AgentRuntime]
+    ) {
+        let configs = handoffAgents.map { agent in
+            AnyHandoffConfiguration(
+                targetAgent: agent,
+                toolNameOverride: nil,
+                toolDescription: nil
+            )
+        }
+        self.init(
+            tools: tools,
+            instructions: instructions,
+            configuration: configuration,
+            memory: memory,
+            inferenceProvider: inferenceProvider,
+            tracer: tracer,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: configs
+        )
+    }
+
     // MARK: - Agent Protocol Methods
 
     /// Executes the agent with the given input and returns a result.
@@ -182,7 +240,9 @@ public actor Agent: AgentRuntime {
             throw AgentError.invalidInput(reason: "Input cannot be empty")
         }
 
-        let activeTracer = tracer ?? AgentEnvironmentValues.current.tracer
+        let activeTracer = tracer
+            ?? AgentEnvironmentValues.current.tracer
+            ?? (configuration.defaultTracingEnabled ? SwiftLogTracer(minimumLevel: .debug) : nil)
         let activeMemory = memory ?? AgentEnvironmentValues.current.memory
         let lifecycleMemory = activeMemory as? any MemorySessionLifecycle
 
@@ -286,11 +346,10 @@ public actor Agent: AgentRuntime {
             let streamHooks = EventStreamHooks(continuation: continuation)
 
             // Combine with user-provided hooks
-            let combinedHooks: any RunHooks
-            if let userHooks = hooks {
-                combinedHooks = CompositeRunHooks(hooks: [userHooks, streamHooks])
+            let combinedHooks: any RunHooks = if let userHooks = hooks {
+                CompositeRunHooks(hooks: [userHooks, streamHooks])
             } else {
-                combinedHooks = streamHooks
+                streamHooks
             }
 
             do {
@@ -408,7 +467,7 @@ public actor Agent: AgentRuntime {
             try checkCancellationAndTimeout(startTime: startTime)
 
             let prompt = buildPrompt(from: conversationHistory)
-            let toolSchemas = await toolRegistry.schemas
+            let toolSchemas = await buildToolSchemasWithHandoffs()
 
             // If no tools defined, generate without tool calling
             if toolSchemas.isEmpty {
@@ -442,13 +501,17 @@ public actor Agent: AgentRuntime {
             }
 
             if response.hasToolCalls {
-                try await processToolCalls(
+                let handoffResult = try await processToolCallsWithHandoffs(
                     response: response,
                     conversationHistory: &conversationHistory,
                     resultBuilder: resultBuilder,
                     hooks: hooks,
                     tracing: tracing
                 )
+                // If a handoff occurred, return the target agent's result
+                if let handoffOutput = handoffResult {
+                    return handoffOutput
+                }
             } else {
                 guard let content = response.content else {
                     throw AgentError.generationFailed(reason: "Model returned no content or tool calls")
@@ -591,6 +654,96 @@ public actor Agent: AgentRuntime {
                 throw AgentError.toolExecutionFailed(toolName: parsedCall.name, underlyingError: errorMessage)
             }
         }
+    }
+
+    // MARK: - Handoff Tool Schema Integration
+
+    /// Builds tool schemas including handoff tool schemas.
+    ///
+    /// This merges regular tool schemas with handoff-generated schemas,
+    /// allowing handoffs to appear as callable tools in the LLM prompt.
+    private func buildToolSchemasWithHandoffs() async -> [ToolSchema] {
+        var schemas = await toolRegistry.schemas
+
+        for handoff in _handoffs {
+            let handoffSchema = ToolSchema(
+                name: handoff.effectiveToolName,
+                description: handoff.effectiveToolDescription,
+                parameters: [
+                    ToolParameter(
+                        name: "reason",
+                        description: "Reason for the handoff",
+                        type: .string,
+                        isRequired: false
+                    ),
+                ]
+            )
+            schemas.append(handoffSchema)
+        }
+
+        return schemas
+    }
+
+    /// Processes tool calls, handling both regular tools and handoff tools.
+    ///
+    /// When a tool call matches a handoff's `effectiveToolName`, the target agent
+    /// is executed with the original user input and its result is returned.
+    /// Returns the handoff output if a handoff was executed, nil otherwise.
+    private func processToolCallsWithHandoffs(
+        response: InferenceResponse,
+        conversationHistory: inout [ConversationMessage],
+        resultBuilder: AgentResult.Builder,
+        hooks: (any RunHooks)?,
+        tracing: TracingHelper?
+    ) async throws -> String? {
+        let handoffMap = Dictionary(
+            uniqueKeysWithValues: _handoffs.map { ($0.effectiveToolName, $0) }
+        )
+
+        let toolCallSummary = response.toolCalls.map { "Calling tool: \($0.name)" }.joined(separator: ", ")
+        conversationHistory.append(.assistant(response.content ?? toolCallSummary))
+
+        for parsedCall in response.toolCalls {
+            // Check if this is a handoff tool call
+            if let handoffConfig = handoffMap[parsedCall.name] {
+                let reason = parsedCall.arguments["reason"]?.stringValue ?? ""
+                let targetAgent = handoffConfig.targetAgent
+
+                let handoffStart = ContinuousClock.now
+                let spanId = await tracing?.traceToolCall(name: parsedCall.name, arguments: parsedCall.arguments)
+
+                // Find the last user message to use as handoff input
+                let lastUserMessage = conversationHistory.last(where: {
+                    if case .user = $0 { return true }
+                    return false
+                })
+                let handoffInput: String = if case let .user(content) = lastUserMessage {
+                    content
+                } else {
+                    reason.isEmpty ? "Continue the conversation" : reason
+                }
+
+                let result = try await targetAgent.run(handoffInput, session: nil, hooks: hooks)
+
+                if let spanId {
+                    let handoffDuration = ContinuousClock.now - handoffStart
+                    await tracing?.traceToolResult(spanId: spanId, name: parsedCall.name, result: result.output, duration: handoffDuration)
+                }
+
+                return result.output
+            }
+
+            // Regular tool call
+            try await executeSingleToolCall(
+                parsedCall: parsedCall,
+                conversationHistory: &conversationHistory,
+                resultBuilder: resultBuilder,
+                hooks: hooks,
+                tracing: tracing
+            )
+        }
+
+        return nil
     }
 
     // MARK: - Prompt Building
@@ -763,7 +916,7 @@ public extension Agent {
         /// - Parameter tools: The typed tools to use.
         /// - Returns: A new builder with the tools set.
         @discardableResult
-        public func tools<T: Tool>(_ tools: [T]) -> Builder {
+        public func tools(_ tools: [some Tool]) -> Builder {
             var copy = self
             copy._tools = tools.map { AnyJSONToolAdapter($0) }
             return copy
@@ -783,7 +936,7 @@ public extension Agent {
         /// - Parameter tool: The typed tool to add.
         /// - Returns: A new builder with the tool added.
         @discardableResult
-        public func addTool<T: Tool>(_ tool: T) -> Builder {
+        public func addTool(_ tool: some Tool) -> Builder {
             var copy = self
             copy._tools.append(AnyJSONToolAdapter(tool))
             return copy
@@ -983,6 +1136,125 @@ public extension Agent {
             outputGuardrails: components.outputGuardrails,
             guardrailRunnerConfiguration: components.guardrailRunnerConfiguration ?? .default,
             handoffs: components.handoffs
+        )
+    }
+}
+
+// MARK: - Convenience Initializers
+
+public extension Agent {
+    /// Creates a new Agent with a name as the first parameter.
+    ///
+    /// This convenience initializer mirrors the OpenAI Agent SDK pattern
+    /// where the agent name is a top-level parameter rather than nested
+    /// inside configuration.
+    ///
+    /// Example:
+    /// ```swift
+    /// let agent = Agent(name: "Triage", instructions: "Route requests", tools: [weatherTool])
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - name: The display name of the agent.
+    ///   - instructions: System instructions defining agent behavior. Default: ""
+    ///   - tools: Tools available to the agent. Default: []
+    ///   - inferenceProvider: Optional custom inference provider. Default: nil
+    ///   - memory: Optional memory system. Default: nil
+    ///   - tracer: Optional tracer for observability. Default: nil
+    ///   - configuration: Additional agent configuration settings. Default: .default
+    ///   - inputGuardrails: Input validation guardrails. Default: []
+    ///   - outputGuardrails: Output validation guardrails. Default: []
+    ///   - guardrailRunnerConfiguration: Configuration for guardrail runner. Default: .default
+    ///   - handoffs: Handoff configurations for multi-agent orchestration. Default: []
+    init(
+        name: String,
+        instructions: String = "",
+        tools: [any AnyJSONTool] = [],
+        inferenceProvider: (any InferenceProvider)? = nil,
+        memory: (any Memory)? = nil,
+        tracer: (any Tracer)? = nil,
+        configuration: AgentConfiguration = .default,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffs: [AnyHandoffConfiguration] = []
+    ) {
+        // Merge the name into the configuration
+        var config = configuration
+        config.name = name
+        self.init(
+            tools: tools,
+            instructions: instructions,
+            configuration: config,
+            memory: memory,
+            inferenceProvider: inferenceProvider,
+            tracer: tracer,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: handoffs
+        )
+    }
+}
+
+// MARK: - Simplified Handoff Declaration
+
+public extension Agent {
+    /// Creates an Agent with agents directly as handoff targets.
+    ///
+    /// This convenience initializer eliminates the need to wrap each agent
+    /// in `AnyHandoffConfiguration`, inspired by the OpenAI SDK pattern
+    /// where you pass agents directly: `Agent(handoffs=[billing, support])`.
+    ///
+    /// Example:
+    /// ```swift
+    /// let triage = Agent(
+    ///     name: "Triage",
+    ///     instructions: "Route requests",
+    ///     handoffAgents: [billingAgent, supportAgent]
+    /// )
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - name: The display name of the agent.
+    ///   - instructions: System instructions. Default: ""
+    ///   - tools: Tools available to the agent. Default: []
+    ///   - inferenceProvider: Optional inference provider. Default: nil
+    ///   - memory: Optional memory system. Default: nil
+    ///   - tracer: Optional tracer. Default: nil
+    ///   - configuration: Additional configuration. Default: .default
+    ///   - inputGuardrails: Input guardrails. Default: []
+    ///   - outputGuardrails: Output guardrails. Default: []
+    ///   - guardrailRunnerConfiguration: Guardrail runner config. Default: .default
+    ///   - handoffAgents: Agents to use as handoff targets.
+    init(
+        name: String,
+        instructions: String = "",
+        tools: [any AnyJSONTool] = [],
+        inferenceProvider: (any InferenceProvider)? = nil,
+        memory: (any Memory)? = nil,
+        tracer: (any Tracer)? = nil,
+        configuration: AgentConfiguration = .default,
+        inputGuardrails: [any InputGuardrail] = [],
+        outputGuardrails: [any OutputGuardrail] = [],
+        guardrailRunnerConfiguration: GuardrailRunnerConfiguration = .default,
+        handoffAgents: [any AgentRuntime]
+    ) {
+        let handoffs = handoffAgents.map { agent in
+            AnyHandoffConfiguration(targetAgent: agent)
+        }
+        self.init(
+            name: name,
+            instructions: instructions,
+            tools: tools,
+            inferenceProvider: inferenceProvider,
+            memory: memory,
+            tracer: tracer,
+            configuration: configuration,
+            inputGuardrails: inputGuardrails,
+            outputGuardrails: outputGuardrails,
+            guardrailRunnerConfiguration: guardrailRunnerConfiguration,
+            handoffs: handoffs
         )
     }
 }
