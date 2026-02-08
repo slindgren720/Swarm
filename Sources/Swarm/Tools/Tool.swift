@@ -45,6 +45,15 @@ public protocol AnyJSONTool: Sendable {
     /// Output guardrails for this tool.
     var outputGuardrails: [any ToolOutputGuardrail] { get }
 
+    /// Whether this tool is currently enabled.
+    ///
+    /// When `false`, the tool's schema is excluded from LLM tool-calling prompts
+    /// and calls to this tool are rejected. Use this for runtime feature flags,
+    /// context-dependent tools, or debug-only tools.
+    ///
+    /// Default: `true`
+    var isEnabled: Bool { get }
+
     /// Executes the tool with the given arguments.
     /// - Parameter arguments: The arguments passed to the tool.
     /// - Returns: The result of the tool execution.
@@ -65,6 +74,9 @@ public extension AnyJSONTool {
 
     /// Default output guardrails (none).
     var outputGuardrails: [any ToolOutputGuardrail] { [] }
+
+    /// Default: tool is always enabled.
+    var isEnabled: Bool { true }
 
     /// Validates that the given arguments match this tool's parameters.
     /// - Parameter arguments: The arguments to validate.
@@ -223,7 +235,8 @@ private enum ToolArgumentProcessor {
 
         case .double:
             switch value {
-            case .double, .int:
+            case .double,
+                 .int:
                 return
             default:
                 throw invalidType(toolName: toolName, path: path, expected: expected, actual: value)
@@ -497,9 +510,9 @@ public actor ToolRegistry {
         Array(tools.keys)
     }
 
-    /// Gets all tool schemas.
+    /// Gets tool schemas for all enabled tools.
     public var schemas: [ToolSchema] {
-        tools.values.map { $0.schema }
+        tools.values.filter(\.isEnabled).map(\.schema)
     }
 
     /// The number of registered tools.
@@ -520,7 +533,7 @@ public actor ToolRegistry {
 
     /// Creates a tool registry with the given typed tools.
     /// - Parameter tools: The initial tools to register.
-    public init<T: Tool>(tools: [T]) {
+    public init(tools: [some Tool]) {
         for tool in tools {
             self.tools[tool.name] = AnyJSONToolAdapter(tool)
         }
@@ -533,13 +546,13 @@ public actor ToolRegistry {
     }
 
     /// Registers a typed tool by bridging it to `AnyJSONTool`.
-    public func register<T: Tool>(_ tool: T) {
+    public func register(_ tool: some Tool) {
         tools[tool.name] = AnyJSONToolAdapter(tool)
     }
 
     /// Registers multiple typed tools.
     /// - Parameter newTools: The typed tools to register.
-    public func register<T: Tool>(_ newTools: [T]) {
+    public func register(_ newTools: [some Tool]) {
         for tool in newTools {
             tools[tool.name] = AnyJSONToolAdapter(tool)
         }
@@ -595,6 +608,10 @@ public actor ToolRegistry {
         try Task.checkCancellation()
 
         guard let tool = tools[name] else {
+            throw AgentError.toolNotFound(name: name)
+        }
+
+        guard tool.isEnabled else {
             throw AgentError.toolNotFound(name: name)
         }
 

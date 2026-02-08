@@ -408,3 +408,48 @@ public extension AnyHandoffConfiguration {
         return "Hand off execution to \(typeName)"
     }
 }
+
+// MARK: - AgentRuntime Handoff Extension
+
+public extension AgentRuntime {
+    /// Creates a handoff configuration targeting this agent.
+    ///
+    /// This convenience method simplifies handoff declaration by allowing
+    /// agents to describe themselves as handoff targets directly.
+    ///
+    /// Example:
+    /// ```swift
+    /// let billingAgent = Agent(name: "Billing", instructions: "Handle billing")
+    /// let handoff = billingAgent.asHandoff(
+    ///     toolName: "transfer_to_billing",
+    ///     description: "Transfer billing questions"
+    /// )
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - toolName: Custom tool name for the handoff. Default: auto-generated.
+    ///   - description: Description for the handoff tool. Default: auto-generated.
+    ///   - onHandoff: Pre-handoff callback. Default: nil.
+    ///   - inputFilter: Input data filter. Default: nil.
+    ///   - isEnabled: Enablement check. Default: nil.
+    ///   - nestHistory: Whether to nest history. Default: false.
+    /// - Returns: A type-erased handoff configuration targeting this agent.
+    func asHandoff(
+        toolName: String? = nil,
+        description: String? = nil,
+        onHandoff: OnHandoffCallback? = nil,
+        inputFilter: InputFilterCallback? = nil,
+        isEnabled: IsEnabledCallback? = nil,
+        nestHistory: Bool = false
+    ) -> AnyHandoffConfiguration {
+        AnyHandoffConfiguration(
+            targetAgent: self,
+            toolNameOverride: toolName,
+            toolDescription: description,
+            onHandoff: onHandoff,
+            inputFilter: inputFilter,
+            isEnabled: isEnabled,
+            nestHandoffHistory: nestHistory
+        )
+    }
+}

@@ -145,6 +145,17 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// Default: `false`
     public var autoPreviousResponseId: Bool
 
+    // MARK: - Observability Settings
+
+    /// Whether to enable default tracing when no explicit tracer is configured.
+    ///
+    /// When `true` and no tracer is set on the agent or via environment,
+    /// the agent automatically uses a `SwiftLogTracer` at `.debug` level
+    /// for execution tracing. Set to `false` to disable automatic tracing.
+    ///
+    /// Default: `true`
+    public var defaultTracingEnabled: Bool
+
     // MARK: - Initialization
 
     /// Creates a new agent configuration.
@@ -165,6 +176,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - parallelToolCalls: Enable parallel tool execution. Default: false
     ///   - previousResponseId: Previous response ID for continuation. Default: nil
     ///   - autoPreviousResponseId: Enable auto response ID tracking. Default: false
+    ///   - defaultTracingEnabled: Enable default tracing when no tracer configured. Default: true
     public init(
         name: String = "Agent",
         maxIterations: Int = 10,
@@ -181,7 +193,8 @@ public struct AgentConfiguration: Sendable, Equatable {
         sessionHistoryLimit: Int? = 50,
         parallelToolCalls: Bool = false,
         previousResponseId: String? = nil,
-        autoPreviousResponseId: Bool = false
+        autoPreviousResponseId: Bool = false,
+        defaultTracingEnabled: Bool = true
     ) {
         precondition(maxIterations > 0, "maxIterations must be positive")
         precondition(timeout > .zero, "timeout must be positive")
@@ -203,6 +216,7 @@ public struct AgentConfiguration: Sendable, Equatable {
         self.parallelToolCalls = parallelToolCalls
         self.previousResponseId = previousResponseId
         self.autoPreviousResponseId = autoPreviousResponseId
+        self.defaultTracingEnabled = defaultTracingEnabled
     }
 }
 
@@ -227,7 +241,8 @@ extension AgentConfiguration: CustomStringConvertible {
             sessionHistoryLimit: \(sessionHistoryLimit.map(String.init) ?? "nil"),
             parallelToolCalls: \(parallelToolCalls),
             previousResponseId: \(previousResponseId.map { "\"\($0)\"" } ?? "nil"),
-            autoPreviousResponseId: \(autoPreviousResponseId)
+            autoPreviousResponseId: \(autoPreviousResponseId),
+            defaultTracingEnabled: \(defaultTracingEnabled)
         )
         """
     }

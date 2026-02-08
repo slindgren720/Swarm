@@ -39,6 +39,35 @@ public enum AgentContextKey: String, Sendable {
     case metadata
 }
 
+// MARK: - AgentContextProviding
+
+/// A protocol for providing typed context to agents and tools.
+///
+/// Conform to this protocol to create strongly-typed context objects
+/// that can be stored in and retrieved from `AgentContext`, eliminating
+/// stringly-typed dictionary access patterns.
+///
+/// Example:
+/// ```swift
+/// struct UserContext: AgentContextProviding {
+///     static let contextKey = "user_context"
+///     let userId: String
+///     let isAdmin: Bool
+/// }
+///
+/// // Store:
+/// await context.setTyped(UserContext(userId: "123", isAdmin: true))
+///
+/// // Retrieve:
+/// if let user: UserContext = await context.typed(UserContext.self) {
+///     print(user.userId)
+/// }
+/// ```
+public protocol AgentContextProviding: Sendable {
+    /// The key used to store this context in the key-value storage.
+    static var contextKey: String { get }
+}
+
 // MARK: - AgentContext
 
 /// Thread-safe shared context for multi-agent orchestration.
@@ -294,6 +323,43 @@ public actor AgentContext {
         return newContext
     }
 
+    // MARK: - Typed Context
+
+    /// Stores a typed context object.
+    ///
+    /// The context is stored under its `contextKey` and can be retrieved
+    /// using `typed(_:)`.
+    ///
+    /// - Parameter context: The typed context to store.
+    public func setTyped<T: AgentContextProviding>(_ context: T) {
+        typedContexts[T.contextKey] = context
+    }
+
+    /// Retrieves a typed context object.
+    ///
+    /// - Parameter type: The type of context to retrieve.
+    /// - Returns: The stored context, or nil if not found or wrong type.
+    public func typed<T: AgentContextProviding>(_: T.Type) -> T? {
+        typedContexts[T.contextKey] as? T
+    }
+
+    /// Removes a typed context.
+    ///
+    /// - Parameter type: The type of context to remove.
+    /// - Returns: The removed context, or nil if not found.
+    @discardableResult
+    public func removeTyped<T: AgentContextProviding>(_: T.Type) -> T? {
+        typedContexts.removeValue(forKey: T.contextKey) as? T
+    }
+
+    /// Returns true if a typed context of the given type is stored.
+    ///
+    /// - Parameter type: The type to check for.
+    /// - Returns: Whether a context of this type exists.
+    public func hasTyped<T: AgentContextProviding>(_: T.Type) -> Bool {
+        typedContexts[T.contextKey] != nil
+    }
+
     // MARK: Private
 
     // MARK: - Private Storage
@@ -306,6 +372,9 @@ public actor AgentContext {
 
     /// List of agent names that have executed.
     private var executionPath: [String]
+
+    /// Typed context storage keyed by context key string.
+    private var typedContexts: [String: any AgentContextProviding] = [:]
 }
 
 // MARK: CustomStringConvertible
