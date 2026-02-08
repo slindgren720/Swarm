@@ -56,7 +56,9 @@ public actor Agent: AgentRuntime {
     nonisolated public let guardrailRunnerConfiguration: GuardrailRunnerConfiguration
 
     /// Configured handoffs for this agent.
-    nonisolated public var handoffs: [AnyHandoffConfiguration] { _handoffs }
+    nonisolated public var handoffs: [AnyHandoffConfiguration] {
+        _handoffs
+    }
 
     // MARK: - Initialization
 
@@ -730,6 +732,22 @@ public actor Agent: AgentRuntime {
                     await tracing?.traceToolResult(spanId: spanId, name: parsedCall.name, result: result.output, duration: handoffDuration)
                 }
 
+                // Merge handoff result metadata into current agent's result builder
+                // This preserves token counts, tool calls, and metadata from the target agent
+                for toolCall in result.toolCalls {
+                    _ = resultBuilder.addToolCall(toolCall)
+                }
+                for toolResult in result.toolResults {
+                    _ = resultBuilder.addToolResult(toolResult)
+                }
+                if let usage = result.tokenUsage {
+                    _ = resultBuilder.setTokenUsage(usage)
+                }
+                for (key, value) in result.metadata {
+                    _ = resultBuilder.setMetadata(key, value)
+                }
+
+                // Return the handoff output to be used as the final result
                 return result.output
             }
 

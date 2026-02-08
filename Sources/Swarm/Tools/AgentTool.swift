@@ -71,7 +71,7 @@ public extension AgentTool {
         description: String? = nil
     ) {
         self.agent = agent
-        let agentName = agent.configuration.name
+        let agentName = agent.name
         self.name = name ?? (agentName.isEmpty ? "agent_tool" : agentName.camelCaseToSnakeCase())
         self.description = description ?? "Delegates to the \(agentName.isEmpty ? "agent" : agentName) agent for processing"
         parameters = [

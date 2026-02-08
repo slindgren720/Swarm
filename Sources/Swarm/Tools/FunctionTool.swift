@@ -8,16 +8,18 @@ import Foundation
 /// A convenience wrapper for tool argument extraction.
 public struct ToolArguments: Sendable {
     public let raw: [String: SendableValue]
+    public let toolName: String
 
-    public init(_ arguments: [String: SendableValue]) {
+    public init(_ arguments: [String: SendableValue], toolName: String = "tool") {
         raw = arguments
+        self.toolName = toolName
     }
 
     /// Gets a required argument of the specified type.
     public func require<T>(_ key: String, as type: T.Type = T.self) throws -> T {
         guard let value = raw[key] else {
             throw AgentError.invalidToolArguments(
-                toolName: "function_tool",
+                toolName: toolName,
                 reason: "Missing required argument: \(key)"
             )
         }
@@ -32,7 +34,7 @@ public struct ToolArguments: Sendable {
 
         guard let result = extracted as? T else {
             throw AgentError.invalidToolArguments(
-                toolName: "function_tool",
+                toolName: toolName,
                 reason: "Argument '\(key)' is not of type \(T.self)"
             )
         }
@@ -117,7 +119,7 @@ public struct FunctionTool: AnyJSONTool, Sendable {
     }
 
     public func execute(arguments: [String: SendableValue]) async throws -> SendableValue {
-        try await handler(ToolArguments(arguments))
+        try await handler(ToolArguments(arguments, toolName: name))
     }
 
     // MARK: Private
