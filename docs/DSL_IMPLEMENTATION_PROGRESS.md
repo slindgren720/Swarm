@@ -456,7 +456,7 @@ Phase 6 (Swift Language DSL Evolution) — TODO
 
 ### Hive Runtime
 - All builds use Hive (no Swift-only fallback for new code)
-- Existing `#if SWARM_HIVE_RUNTIME` guards wrap entire OrchestrationHiveEngine
+- Orchestration execution is Hive-only
 - New files target Hive exclusively
 
 ### Schema Channels (4 core channels)

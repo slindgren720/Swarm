@@ -40,15 +40,14 @@ public struct Interrupt: OrchestrationStep, Sendable {
 
 // MARK: - HiveStep (Hive Runtime)
 
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
+#if canImport(HiveCore)
 
 import HiveCore
 
 /// An escape hatch that injects a raw Hive node closure into a Swarm orchestration.
 ///
-/// When running under the Hive runtime, `HiveStep`'s `nodeFactory` is emitted directly
-/// as a Hive graph node during compilation, giving full access to `HiveNodeInput` and
-/// `HiveNodeOutput`. When running under the Swift runtime, the step acts as a passthrough.
+/// `HiveStep`'s `nodeFactory` is emitted directly as a Hive graph node during compilation,
+/// giving full access to `HiveNodeInput` and `HiveNodeOutput`.
 ///
 /// Example:
 /// ```swift
@@ -80,7 +79,7 @@ public struct HiveStep: OrchestrationStep, Sendable {
         nodeFactory = node
     }
 
-    /// Direct execution fallback for Swift runtime mode.
+    /// Direct execution fallback.
     ///
     /// When HiveStep is executed directly (not compiled into a Hive graph),
     /// it acts as a passthrough, preserving the input unchanged.
@@ -91,35 +90,7 @@ public struct HiveStep: OrchestrationStep, Sendable {
 
 #else
 
-/// An escape hatch for injecting custom processing into orchestrations.
-///
-/// When the Hive runtime is not available, `HiveStep` accepts a simple string
-/// transform closure. In Swift runtime mode the step acts as a passthrough,
-/// preserving the input unchanged. The closure is stored but only used when
-/// compiled into a Hive graph (which requires the Hive runtime).
-///
-/// Example:
-/// ```swift
-/// HiveStep { input in
-///     // This closure is stored but not invoked in Swift-only mode.
-///     "transformed: \(input)"
-/// }
-/// ```
-public struct HiveStep: OrchestrationStep, Sendable {
-    /// Stored closure (used only during Hive graph compilation).
-    public let transform: @Sendable (String) -> String
-
-    /// Creates a new HiveStep with a transform closure.
-    /// - Parameter transform: A closure stored for Hive graph compilation.
-    ///   In Swift runtime mode the step is a passthrough.
-    public init(_ transform: @escaping @Sendable (String) -> String) {
-        self.transform = transform
-    }
-
-    /// Direct execution: passthrough with metadata indicating direct mode.
-    public func execute(_ input: String, context: OrchestrationStepContext) async throws -> AgentResult {
-        AgentResult(output: input, metadata: ["hive_step.direct": .bool(true)])
-    }
-}
+@available(*, unavailable, message: "HiveStep requires HiveCore.")
+public struct HiveStep: Sendable {}
 
 #endif

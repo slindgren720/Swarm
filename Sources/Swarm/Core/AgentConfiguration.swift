@@ -9,13 +9,15 @@ import Foundation
 
 /// Runtime execution mode for orchestration.
 public enum SwarmRuntimeMode: Sendable, Equatable {
-    /// Always execute orchestration using the Swift in-process engine.
+    /// Legacy mode selector retained for source compatibility.
+    ///
+    /// Orchestration execution always uses the Hive runtime.
     case swift
 
-    /// Execute orchestration using the Hive runtime. Fails if Hive is unavailable.
+    /// Execute orchestration using the Hive runtime.
     case hive
 
-    /// Alias for `.hive` — explicitly communicates that Hive is required.
+    /// Alias for `.hive` retained for source compatibility.
     case requireHive
 }
 
@@ -47,7 +49,6 @@ public struct SwarmHiveRunOptionsOverride: Sendable, Equatable {
 /// Policy hints for model inference routing.
 ///
 /// When running on the Hive runtime, these map to `HiveInferenceHints`.
-/// On the Swift runtime, these inform provider selection.
 public struct InferencePolicy: Sendable, Equatable {
     /// Desired latency tier for inference.
     public enum LatencyTier: String, Sendable, Equatable {
@@ -117,13 +118,9 @@ public struct AgentConfiguration: Sendable, Equatable {
     /// Default configuration with sensible defaults.
     public static let `default` = AgentConfiguration()
 
-    /// Default runtime mode based on build capabilities.
+    /// Default runtime mode for orchestration execution.
     public static var defaultRuntimeMode: SwarmRuntimeMode {
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
         .hive
-#else
-        .swift
-#endif
     }
 
     // MARK: - Identity
@@ -183,7 +180,8 @@ public struct AgentConfiguration: Sendable, Equatable {
 
     /// Runtime mode for orchestration execution.
     ///
-    /// Default: `.hive` when Hive runtime support is compiled in, otherwise `.swift`.
+    /// This value is retained for source compatibility. Execution always uses Hive.
+    /// Default: `.hive`.
     public var runtimeMode: SwarmRuntimeMode
 
     /// Optional Hive run options override used by orchestration runs in Hive mode.
@@ -293,7 +291,7 @@ public struct AgentConfiguration: Sendable, Equatable {
     ///   - includeReasoning: Include reasoning in events. Default: true
     ///   - sessionHistoryLimit: Maximum session history messages to load. Default: 50
     ///   - contextProfile: Context budgeting profile. Default: `.platformDefault`
-    ///   - runtimeMode: Runtime mode for orchestration execution. Default: build-dependent
+    ///   - runtimeMode: Runtime mode selector retained for compatibility. Default: `.hive`
     ///   - hiveRunOptionsOverride: Optional Hive run options override for orchestration. Default: nil
     ///   - inferencePolicy: Inference routing policy hints. Default: nil
     ///   - parallelToolCalls: Enable parallel tool execution. Default: false

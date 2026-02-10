@@ -89,6 +89,15 @@ struct DelayedStep: OrchestrationStep {
     }
 }
 
+struct MetadataStep: OrchestrationStep {
+    let output: String
+    let metadata: [String: SendableValue]
+
+    func execute(_ input: String, context _: OrchestrationStepContext) async throws -> AgentResult {
+        AgentResult(output: "\(input)\(output)", metadata: metadata)
+    }
+}
+
 @Suite("Orchestration Tests")
 struct OrchestrationTests {
     @Test("Shared context persists across steps")
@@ -145,6 +154,37 @@ struct OrchestrationTests {
         #expect(result.metadata["parallel.error_count"]?.intValue == 1)
     }
 
+    @Test("Orchestration preserves top-level and namespaced step metadata")
+    func orchestrationPreservesTopLevelAndNamespacedMetadata() async throws {
+        let workflow = Orchestration {
+            MetadataStep(
+                output: "1",
+                metadata: [
+                    "shared": .string("first"),
+                    "first_only": .int(1)
+                ]
+            )
+            MetadataStep(
+                output: "2",
+                metadata: [
+                    "shared": .string("second"),
+                    "second_only": .bool(true)
+                ]
+            )
+        }
+
+        let result = try await workflow.run("x")
+
+        #expect(result.output == "x12")
+        #expect(result.metadata["shared"]?.stringValue == "second")
+        #expect(result.metadata["first_only"]?.intValue == 1)
+        #expect(result.metadata["second_only"]?.boolValue == true)
+        #expect(result.metadata["orchestration.step_0.shared"]?.stringValue == "first")
+        #expect(result.metadata["orchestration.step_1.shared"]?.stringValue == "second")
+        #expect(result.metadata["orchestration.step_0.first_only"]?.intValue == 1)
+        #expect(result.metadata["orchestration.step_1.second_only"]?.boolValue == true)
+    }
+
 
     @Test("Orchestration records engine metadata")
     func orchestrationRecordsEngineMetadata() async throws {
@@ -153,15 +193,11 @@ struct OrchestrationTests {
         }
 
         let result = try await workflow.run("ping")
-        #if SWARM_HIVE_RUNTIME && canImport(HiveCore)
         #expect(result.metadata["orchestration.engine"]?.stringValue == "hive")
-        #else
-        #expect(result.metadata["orchestration.engine"]?.stringValue == "swift")
-        #endif
     }
 
-    @Test("Orchestration runtimeMode.swift forces Swift engine")
-    func orchestrationRuntimeModeSwiftForcesSwiftEngine() async throws {
+    @Test("Orchestration runtimeMode.swift remains source-compatible and executes on Hive")
+    func orchestrationRuntimeModeSwiftExecutesOnHive() async throws {
         let workflow = Orchestration(
             configuration: AgentConfiguration(runtimeMode: .swift)
         ) {
@@ -169,37 +205,23 @@ struct OrchestrationTests {
         }
 
         let result = try await workflow.run("ping")
-        #expect(result.metadata["orchestration.engine"]?.stringValue == "swift")
+        #expect(result.metadata["orchestration.engine"]?.stringValue == "hive")
     }
 
-    @Test("Orchestration requireHive fails closed when Hive runtime is unavailable")
-    func orchestrationRequireHiveFailClosed() async throws {
+    @Test("Orchestration runtimeMode.requireHive executes on Hive")
+    func orchestrationRuntimeModeRequireHiveExecutesOnHive() async throws {
         let workflow = Orchestration(
             configuration: AgentConfiguration(runtimeMode: .requireHive)
         ) {
             Transform { $0 }
         }
 
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
         let result = try await workflow.run("ping")
         #expect(result.metadata["orchestration.engine"]?.stringValue == "hive")
-#else
-        let thrown = await #expect(throws: (any Error).self) {
-            _ = try await workflow.run("ping")
-        }
-        let orchestrationError = try #require(thrown as? OrchestrationError)
-        switch orchestrationError {
-        case let .hiveRuntimeUnavailable(reason):
-            #expect(reason.contains("SWARM_HIVE_RUNTIME"))
-        default:
-            Issue.record("Expected hiveRuntimeUnavailable, got \(orchestrationError)")
-        }
-#endif
     }
 
     @Test("Orchestration Hive run options override is passed through")
     func orchestrationHiveRunOptionsOverridePassesThrough() async throws {
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
         let workflow = Orchestration(
             configuration: AgentConfiguration(
                 runtimeMode: .hive,
@@ -221,14 +243,10 @@ struct OrchestrationTests {
                 Issue.record("Expected internal out-of-steps error, got \(error).")
             }
         }
-#else
-        #expect(Bool(true))
-#endif
     }
 
     @Test("Orchestration inferencePolicy maps to Hive inference hints")
     func orchestrationInferencePolicyMapsToHiveHints() {
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
         let policy = InferencePolicy(
             latencyTier: .background,
             privacyRequired: true,
@@ -241,9 +259,6 @@ struct OrchestrationTests {
         #expect(hints?.privacyRequired == true)
         #expect(hints?.tokenBudget == 2048)
         #expect(hints?.networkState.rawValue == "metered")
-#else
-        #expect(Bool(true))
-#endif
     }
 
     @Test("Orchestration stream emits per-step iteration events")

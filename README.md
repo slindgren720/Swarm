@@ -28,7 +28,7 @@ Swarm provides everything you need to build AI agents: autonomous reasoning, too
 
 ## Runtime (Hive)
 
-On macOS/iOS, Swarm uses Hive graph execution by default (when `HiveCore` is available). Set `SWARM_HIVE_RUNTIME=0` at build time to opt out and use the built-in Swift executor.
+Swarm orchestration executes on the Hive runtime.
 
 If a sibling Hive checkout exists at `../Hive`, Swarm auto-uses it; set `SWARM_USE_LOCAL_HIVE=0` to force the remote package (or `SWARM_USE_LOCAL_HIVE=1` to force local).
 

@@ -5,9 +5,6 @@ import Foundation
 
 let includeDemo = ProcessInfo.processInfo.environment["SWARM_INCLUDE_DEMO"] == "1"
 
-// Default ON. Set SWARM_HIVE_RUNTIME=0 to opt out.
-let useHiveRuntime = ProcessInfo.processInfo.environment["SWARM_HIVE_RUNTIME"] != "0"
-
 // Hive integration target is enabled by default for migration/cutover branches.
 // Set SWARM_INCLUDE_HIVE=0 to opt out explicitly.
 let includeHiveIntegration = ProcessInfo.processInfo.environment["SWARM_INCLUDE_HIVE"] != "0"
@@ -71,12 +68,10 @@ if useLocalDependencies {
     packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.1"))
 }
 
-if useHiveRuntime || includeHiveIntegration {
-    if let hivePath = localHivePath {
-        packageDependencies.append(.package(path: hivePath))
-    } else {
-        packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
-    }
+if let hivePath = localHivePath {
+    packageDependencies.append(.package(path: hivePath))
+} else {
+    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
 }
 
 var swarmDependencies: [Target.Dependency] = [
@@ -86,23 +81,16 @@ var swarmDependencies: [Target.Dependency] = [
     .product(name: "Wax", package: "Wax")
 ]
 
-if useHiveRuntime {
-    swarmDependencies.append(
-        .product(
-            name: "HiveCore",
-            package: "Hive",
-            condition: .when(platforms: [.macOS, .iOS])
-        )
+swarmDependencies.append(
+    .product(
+        name: "HiveCore",
+        package: "Hive"
     )
-}
+)
 
 var swarmSwiftSettings: [SwiftSetting] = [
     .enableExperimentalFeature("StrictConcurrency")
 ]
-
-if useHiveRuntime {
-    swarmSwiftSettings.append(.define("SWARM_HIVE_RUNTIME"))
-}
 
 var packageTargets: [Target] = [
     // MARK: - Macro Implementation (Compiler Plugin)

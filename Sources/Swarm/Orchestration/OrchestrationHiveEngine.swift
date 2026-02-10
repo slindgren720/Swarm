@@ -3,7 +3,7 @@
 //
 // Hive-backed orchestration executor.
 
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
+#if canImport(HiveCore)
 
 import Dispatch
 import Foundation
@@ -293,6 +293,7 @@ enum OrchestrationHiveEngine {
 
                 var metadataUpdate: [String: SendableValue] = [:]
                 for (key, value) in result.metadata {
+                    metadataUpdate[key] = value
                     metadataUpdate["orchestration.step_\(index).\(key)"] = value
                 }
 

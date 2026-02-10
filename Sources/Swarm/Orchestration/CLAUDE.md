@@ -77,9 +77,9 @@ The `OrchestrationHiveEngine` compiles steps into Hive DAG graphs using:
 
 1. Create `Sources/Swarm/Orchestration/MyStep.swift` conforming to `OrchestrationStep`
 2. Add `buildExpression` overload in `OrchestrationBuilder`
-3. Add compilation case in `OrchestrationHiveEngine.compileStep()` (behind `#if SWARM_HIVE_RUNTIME`)
+3. Add compilation case in `OrchestrationHiveEngine.compileStep()`
 4. Write tests in `Tests/SwarmTests/Orchestration/`
-5. Ensure both Swift-native and Hive execution paths work
+5. Ensure Hive execution path works
 
 ## Conventions
 - All step types must be `Sendable`

@@ -81,8 +81,6 @@ private struct PrefixAgent: AgentRuntime {
 
 // MARK: - Accumulator Tests
 
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
-
 @Suite("Smart Graph Compilation — Accumulator")
 struct AccumulatorTests {
     @Test("Accumulator is Codable round-trip")
@@ -129,11 +127,7 @@ struct AccumulatorTests {
     }
 }
 
-#endif
-
 // MARK: - Graph Compilation Integration Tests
-
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
 
 @Suite("Smart Graph Compilation — Hive Graph Integration")
 struct SmartGraphCompilationIntegrationTests {
@@ -270,5 +264,3 @@ struct SmartGraphCompilationIntegrationTests {
         #expect(result.output.contains("B:input"))
     }
 }
-
-#endif

@@ -160,16 +160,14 @@ struct InterruptTests {
     }
 }
 
-// MARK: - HiveStep Tests (non-Hive runtime)
+// MARK: - HiveStep Direct Execution Tests
 
-#if !SWARM_HIVE_RUNTIME
-
-@Suite("HiveStep -- Direct Execution (Swift Runtime)")
+@Suite("HiveStep -- Direct Execution")
 struct HiveStepDirectTests {
     @Test("HiveStep direct execution returns passthrough with metadata")
     func hiveStepDirectExecution() async throws {
         let step = HiveStep { _ in
-            "transformed"
+            fatalError("unused in direct execution")
         }
 
         let result = try await step.execute("hello", hooks: nil)
@@ -179,7 +177,7 @@ struct HiveStepDirectTests {
 
     @Test("HiveStep preserves empty input")
     func hiveStepEmptyInput() async throws {
-        let step = HiveStep { _ in "should not be used" }
+        let step = HiveStep { _ in fatalError("unused in direct execution") }
 
         let result = try await step.execute("", hooks: nil)
         #expect(result.output == "")
@@ -190,7 +188,7 @@ struct HiveStepDirectTests {
         let workflow = Orchestration {
             Sequential {
                 HSPrefixAgent(prefix: "A:")
-                HiveStep { _ in "hive-transformed" }
+                HiveStep { _ in fatalError("unused in direct execution") }
                 HSPrefixAgent(prefix: "B:")
             }
         }
@@ -202,7 +200,7 @@ struct HiveStepDirectTests {
     @Test("HiveStep composes in OrchestrationBuilder")
     func hiveStepComposesInBuilder() async throws {
         let workflow = Orchestration {
-            HiveStep { _ in "unused" }
+            HiveStep { _ in fatalError("unused in direct execution") }
         }
 
         let result = try await workflow.run("passthrough")
@@ -213,9 +211,9 @@ struct HiveStepDirectTests {
     func multipleHiveSteps() async throws {
         let workflow = Orchestration {
             Sequential {
-                HiveStep { _ in "a" }
-                HiveStep { _ in "b" }
-                HiveStep { _ in "c" }
+                HiveStep { _ in fatalError("unused in direct execution") }
+                HiveStep { _ in fatalError("unused in direct execution") }
+                HiveStep { _ in fatalError("unused in direct execution") }
             }
         }
 
@@ -223,8 +221,6 @@ struct HiveStepDirectTests {
         #expect(result.output == "input")
     }
 }
-
-#endif
 
 // MARK: - Integration Tests
 
