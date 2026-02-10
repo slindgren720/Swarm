@@ -307,8 +307,8 @@ public struct HiveBackedAgent: AgentRuntime, Sendable {
             let answer = try store.get(HiveAgents.Schema.finalAnswerKey)
             finalAnswer = answer ?? ""
         } catch {
-            Log.agents.warning("Failed to read finalAnswerKey from Hive store: \(error)")
-            finalAnswer = ""
+            Log.agents.error("Failed to read finalAnswerKey from Hive store: \(error)")
+            throw AgentError.internalError(reason: "Failed to extract final answer from Hive: \(error.localizedDescription)")
         }
         _ = builder.setOutput(finalAnswer)
 
@@ -369,7 +369,9 @@ public struct HiveBackedAgent: AgentRuntime, Sendable {
                 _ = builder.incrementIteration()
             }
         } catch {
-            Log.agents.warning("Failed to extract tool calls from Hive messages: \(error)")
+            Log.agents.error("Failed to extract tool calls from Hive messages: \(error)")
+            // Set metadata to indicate extraction failure
+            _ = builder.setMetadata(["extraction_error": .string("Failed to extract tool calls: \(error.localizedDescription)")])
             _ = builder.incrementIteration()
         }
 

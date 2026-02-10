@@ -176,8 +176,8 @@ if includeDemo {
 let package = Package(
     name: "Swarm",
     platforms: [
-        .macOS(.v26),
-        .iOS(.v26),
+        .macOS(.v14),
+        .iOS(.v17),
         .watchOS(.v10),
         .tvOS(.v17),
         .visionOS(.v1)
