@@ -140,22 +140,132 @@ Follow Red-Green-Refactor cycle for all development:
 - **Foundation Models**: Apple's on-device models (iOS 26+)
 - **MLX**: Local model execution fallback
 
-## Sub-Agents
+## Agent Orchestration System
 
-Use specialized agents for focused expertise. Delegate proactively:
+### Agent Registry
 
-| Agent | When to Use |
-|-------|-------------|
-| `context-builder` | **Long-running tasks**, gathering requirements, researching before implementation |
-| `api-designer` | Designing public APIs, naming decisions, fluent interfaces |
-| `protocol-architect` | Type hierarchies, protocol composition, POP patterns |
-| `concurrency-expert` | Async code, actors, Sendable conformance, data-race safety |
-| `macro-engineer` | Implementing or modifying Swift macros |
-| `code-reviewer` | After code changes, before commits |
-| `test-specialist` | Writing tests, creating mocks, test coverage |
-| `framework-architect` | Multi-agent orchestration patterns, coordination design |
+#### Tier 1: Orchestration Layer (Route & Coordinate)
+| Agent | Model | Mode | Role |
+|-------|-------|------|------|
+| **Lead Session** (Claude Code main) | opus | — | Router, delegator, user interface. Always active. |
+| `context-builder` | sonnet | plan | Research at start of tasks spanning 3+ files |
+| `context-manager` | haiku | default | Context preservation between phases, before compaction |
 
-### Context Management (Long-Running Tasks)
+#### Tier 2: Design Layer (Think & Plan — Read-Only)
+| Agent | Model | When to Use |
+|-------|-------|-------------|
+| `protocol-architect` | sonnet | Designing protocols, type hierarchies, protocol composition, generic constraints |
+| `api-designer` | sonnet | Public API naming, fluent interfaces, progressive disclosure, builder patterns |
+| `framework-architect` | sonnet | Multi-agent orchestration patterns, new step types, Hive DAG compilation design |
+| `concurrency-expert` | sonnet | Actor isolation design, Sendable conformance, data-race prevention review |
+
+#### Tier 3: Implementation Layer (Write Code)
+| Agent | Model | Scope | When to Use |
+|-------|-------|-------|-------------|
+| `swarm-implementer` | sonnet | `Sources/Swarm/` | Swarm framework code: orchestration steps, agents, memory, DSL, tools |
+| `hive-implementer` | sonnet | `Sources/HiveSwarm/` + Hive compilation | HiveSwarm bridge code, DAG compilation, checkpoint serialization |
+| `swift-expert` | opus | Any Swift | Complex: new subsystems, multi-file refactors, novel architectural patterns |
+| `implementer` | sonnet | Any Swift | Medium complexity: add methods, implement protocols, standard patterns |
+| `fixer` | haiku | Any Swift | Low complexity: rename, fix imports, small single-file edits (<20 lines) |
+
+#### Tier 4: Quality Layer (Verify & Validate)
+| Agent | Model | When to Use |
+|-------|-------|-------------|
+| `test-specialist` | sonnet | TDD Red phase: write failing tests, create mocks, design coverage. Never production code. |
+| `macro-engineer` | sonnet | Create/modify Swift macros (@AgentActor, @Tool, custom macros) |
+| `swift-code-reviewer` | — | After code changes, before commits |
+| `swift-debug-agent` | — | Build failures, compilation errors, linker issues |
+
+### Routing Decision Tree
+
+Evaluate conditions **in order** (first-match-wins, inspired by Swarm's `AgentRouter`):
+
+```
+TASK RECEIVED
+│
+├─ NEW SESSION or COMPLEX TASK (3+ files)?
+│  └─ YES → context-builder (research phase)
+│
+├─ DESIGNING a new protocol or type hierarchy?
+│  └─ YES → protocol-architect
+│
+├─ DESIGNING a public API surface?
+│  └─ YES → api-designer
+│
+├─ ORCHESTRATION patterns (routing, chains, parallel, handoffs)?
+│  └─ YES → framework-architect
+│
+├─ CONCURRENCY (actors, Sendable, async, isolation)?
+│  └─ YES → concurrency-expert (review) → implementer (code)
+│
+├─ SWIFT MACROS?
+│  └─ YES → macro-engineer
+│
+├─ WRITING TESTS (TDD Red phase)?
+│  └─ YES → test-specialist
+│
+├─ WRITING CODE?
+│  ├─ Swarm framework (Sources/Swarm/, Tests/SwarmTests/)?
+│  │  ├─ HiveSwarm bridge (Sources/HiveSwarm/)? → hive-implementer
+│  │  └─ YES → swarm-implementer
+│  ├─ High complexity (3+ files, novel pattern) → swift-expert (opus)
+│  ├─ Medium complexity (standard patterns) → implementer (sonnet)
+│  └─ Low complexity (<20 lines) → fixer (haiku)
+│
+├─ BUILD FAILURE? → swift-debug-agent
+├─ CODE REVIEW? → swift-code-reviewer
+├─ DOCUMENTATION? → api-documenter
+└─ FALLBACK → Lead session handles directly
+```
+
+### Common Agent Chains
+
+**New Swarm Feature (TDD)**:
+`context-builder → test-specialist → protocol-architect → api-designer → swarm-implementer → concurrency-expert → swift-code-reviewer`
+
+**Hive Bridge Feature**:
+`context-builder → framework-architect → test-specialist → hive-implementer → concurrency-expert → swift-code-reviewer`
+
+**Bug Fix (Swarm)**:
+`context-builder → swift-debug-agent → swarm-implementer → test-specialist → swift-code-reviewer`
+
+**New Orchestration Pattern**:
+`context-builder → framework-architect → protocol-architect → test-specialist → swarm-implementer → concurrency-expert → swift-code-reviewer`
+
+### Agent Delegation Protocol
+
+#### Context Handoff
+Every delegation MUST include:
+1. Task brief (what to do)
+2. Context document path (`.claude/context/active-task.md`)
+3. Previous agent output summary
+4. File scope constraints (which files to touch)
+
+Every agent MUST return:
+1. Summary (< 200 words)
+2. Files changed list
+3. Decisions made with rationale
+4. Handoff notes for next agent
+5. Concerns or risks discovered
+
+#### Quality Gates
+| Gate | Check | Agent |
+|------|-------|-------|
+| Design → Implementation | Protocol compiles, API is ergonomic | Lead session review |
+| Implementation → Review | `swift build` succeeds | swift-debug-agent |
+| Review → Commit | No critical issues | swift-code-reviewer |
+| Commit → Done | `swift test` passes | Lead session (Bash) |
+
+#### Conflict Resolution
+| Conflict | Resolution |
+|----------|------------|
+| swarm-implementer vs implementer | Swarm source files → swarm-implementer; non-Swarm → global implementer |
+| hive-implementer vs swarm-implementer | `Sources/HiveSwarm/` → hive; `Sources/Swarm/` → swarm |
+| swift-expert vs swarm-implementer | Novel patterns / 3+ files → swift-expert; standard Swarm → swarm-implementer |
+| implementer vs fixer | Single file, <20 lines → fixer (cost optimization) |
+| Design agents disagree | Present both options to user via AskUserQuestion; record decision |
+
+#### Context Management (Long-Running Tasks)
 **Always use `context-builder` agent** at the start of complex or long-running tasks to:
 - Gather comprehensive requirements before implementation
 - Research existing codebase patterns and conventions
@@ -166,28 +276,16 @@ Use specialized agents for focused expertise. Delegate proactively:
 1. **Start**: Use `context-builder` to research and gather context
 2. **Plan**: Document findings and create implementation plan
 3. **Execute**: Delegate to specialist agents with clear context handoffs
-4. **Checkpoint**: Re-invoke `context-builder` for multi-phase tasks
-5. **Update**: Keep plan documents and memory updated throughout
+4. **Checkpoint**: Re-invoke `context-manager` between major phases
+5. **Update**: Keep `.claude/context/active-task.md` and memory updated throughout
 
-**When to use `context-builder`**:
-- Tasks spanning multiple files or components
-- Features requiring understanding of existing architecture
-- Bug fixes requiring root cause investigation
-- Any task expected to take more than a few interactions
+### Skills Reference
 
-### Delegation Guidelines
-- **Before implementing**: Use `context-builder` to research, then `api-designer` and `protocol-architect`
-- **During implementation**: Use `concurrency-expert` for async code, `macro-engineer` for macros
-- **After changes**: Always run `code-reviewer` before committing
-- **For tests**: Delegate to `test-specialist` for mock patterns and coverage (TDD: tests first!)
-
-**TDD + Sub-Agent Workflow** (for complex features):
-1. `context-builder` → research existing patterns and requirements
-2. `test-specialist` → write failing tests first (Red phase)
-3. `protocol-architect` → design abstractions to satisfy tests
-4. `api-designer` → refine public interface
-5. `concurrency-expert` → verify thread safety
-6. `code-reviewer` → final review (ensure tests pass)
+| Skill | Purpose | When to Load |
+|-------|---------|-------------|
+| `/swarm-patterns` | Swarm framework patterns reference | Any agent working on Swarm code |
+| `/tdd-workflow` | TDD Red-Green-Refactor with Swarm examples | Start of implementation tasks |
+| `/swift-concurrency-guide` | Swift 6.2 concurrency quick reference | Concurrency review or async code |
 
 ## Quick References
 - API patterns: See `Sources/Swarm/Examples/`

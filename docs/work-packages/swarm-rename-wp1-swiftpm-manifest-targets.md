@@ -22,12 +22,12 @@ Task Breakdown:
    - Internal manifest variable names:
      - `swiftAgentsDependencies` → `swarmDependencies`.
      - `swiftAgentsSwiftSettings` → `swarmSwiftSettings`.
-   - Env var and define names:
-     - `SWIFTAGENTS_*` → `SWARM_*` (including `SWARM_HIVE_RUNTIME` define).
+   - Env var names:
+     - `SWIFTAGENTS_*` → `SWARM_*`.
 2. Ensure target dependency lists refer to renamed targets/products.
 
 Expected Output:
-- `Package.swift` contains only Swarm names for package/products/targets/macros and `SWARM_*` env vars/defines.
+- `Package.swift` contains only Swarm names for package/products/targets/macros and `SWARM_*` env vars.
 
 Constraints:
 - Do not edit any non-manifest files.

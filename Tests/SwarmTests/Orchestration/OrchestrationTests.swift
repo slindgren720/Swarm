@@ -89,6 +89,15 @@ struct DelayedStep: OrchestrationStep {
     }
 }
 
+struct MetadataStep: OrchestrationStep {
+    let output: String
+    let metadata: [String: SendableValue]
+
+    func execute(_ input: String, context _: OrchestrationStepContext) async throws -> AgentResult {
+        AgentResult(output: "\(input)\(output)", metadata: metadata)
+    }
+}
+
 @Suite("Orchestration Tests")
 struct OrchestrationTests {
     @Test("Shared context persists across steps")
@@ -145,6 +154,37 @@ struct OrchestrationTests {
         #expect(result.metadata["parallel.error_count"]?.intValue == 1)
     }
 
+    @Test("Orchestration preserves top-level and namespaced step metadata")
+    func orchestrationPreservesTopLevelAndNamespacedMetadata() async throws {
+        let workflow = Orchestration {
+            MetadataStep(
+                output: "1",
+                metadata: [
+                    "shared": .string("first"),
+                    "first_only": .int(1)
+                ]
+            )
+            MetadataStep(
+                output: "2",
+                metadata: [
+                    "shared": .string("second"),
+                    "second_only": .bool(true)
+                ]
+            )
+        }
+
+        let result = try await workflow.run("x")
+
+        #expect(result.output == "x12")
+        #expect(result.metadata["shared"]?.stringValue == "second")
+        #expect(result.metadata["first_only"]?.intValue == 1)
+        #expect(result.metadata["second_only"]?.boolValue == true)
+        #expect(result.metadata["orchestration.step_0.shared"]?.stringValue == "first")
+        #expect(result.metadata["orchestration.step_1.shared"]?.stringValue == "second")
+        #expect(result.metadata["orchestration.step_0.first_only"]?.intValue == 1)
+        #expect(result.metadata["orchestration.step_1.second_only"]?.boolValue == true)
+    }
+
 
     @Test("Orchestration records engine metadata")
     func orchestrationRecordsEngineMetadata() async throws {
@@ -153,11 +193,72 @@ struct OrchestrationTests {
         }
 
         let result = try await workflow.run("ping")
-        #if SWARM_HIVE_RUNTIME && canImport(HiveCore)
         #expect(result.metadata["orchestration.engine"]?.stringValue == "hive")
-        #else
-        #expect(result.metadata["orchestration.engine"]?.stringValue == "swift")
-        #endif
+    }
+
+    @Test("Orchestration runtimeMode.swift remains source-compatible and executes on Hive")
+    func orchestrationRuntimeModeSwiftExecutesOnHive() async throws {
+        let workflow = Orchestration(
+            configuration: AgentConfiguration(runtimeMode: .swift)
+        ) {
+            Transform { $0 }
+        }
+
+        let result = try await workflow.run("ping")
+        #expect(result.metadata["orchestration.engine"]?.stringValue == "hive")
+    }
+
+    @Test("Orchestration runtimeMode.requireHive executes on Hive")
+    func orchestrationRuntimeModeRequireHiveExecutesOnHive() async throws {
+        let workflow = Orchestration(
+            configuration: AgentConfiguration(runtimeMode: .requireHive)
+        ) {
+            Transform { $0 }
+        }
+
+        let result = try await workflow.run("ping")
+        #expect(result.metadata["orchestration.engine"]?.stringValue == "hive")
+    }
+
+    @Test("Orchestration Hive run options override is passed through")
+    func orchestrationHiveRunOptionsOverridePassesThrough() async throws {
+        let workflow = Orchestration(
+            configuration: AgentConfiguration(
+                runtimeMode: .hive,
+                hiveRunOptionsOverride: .init(maxSteps: 1)
+            )
+        ) {
+            Transform { $0 + "1" }
+            Transform { $0 + "2" }
+            Transform { $0 + "3" }
+        }
+
+        do {
+            _ = try await workflow.run("x")
+            Issue.record("Expected maxSteps=1 override to terminate early in Hive mode.")
+        } catch let error as AgentError {
+            if case let .internalError(reason) = error {
+                #expect(reason.contains("maxSteps=1"))
+            } else {
+                Issue.record("Expected internal out-of-steps error, got \(error).")
+            }
+        }
+    }
+
+    @Test("Orchestration inferencePolicy maps to Hive inference hints")
+    func orchestrationInferencePolicyMapsToHiveHints() {
+        let policy = InferencePolicy(
+            latencyTier: .background,
+            privacyRequired: true,
+            tokenBudget: 2048,
+            networkState: .metered
+        )
+        let hints = OrchestrationHiveEngine.makeInferenceHints(from: policy)
+
+        #expect(hints?.latencyTier.rawValue == "background")
+        #expect(hints?.privacyRequired == true)
+        #expect(hints?.tokenBudget == 2048)
+        #expect(hints?.networkState.rawValue == "metered")
     }
 
     @Test("Orchestration stream emits per-step iteration events")

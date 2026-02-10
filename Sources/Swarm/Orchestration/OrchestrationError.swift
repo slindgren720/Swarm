@@ -40,6 +40,20 @@ public enum OrchestrationError: Error, Sendable, Equatable {
 
     /// All agents in parallel execution failed.
     case allAgentsFailed(errors: [String])
+
+    /// Hive runtime was required but unavailable for this build/runtime.
+    case hiveRuntimeUnavailable(reason: String)
+
+    // MARK: - Workflow Control Errors
+
+    /// Workflow was interrupted (e.g. by an `Interrupt` step).
+    case workflowInterrupted(reason: String)
+
+    /// Human approval request timed out.
+    case humanApprovalTimeout(prompt: String)
+
+    /// Human approval was rejected.
+    case humanApprovalRejected(prompt: String, reason: String)
 }
 
 // MARK: LocalizedError
@@ -64,6 +78,14 @@ extension OrchestrationError: LocalizedError {
         case let .allAgentsFailed(errors):
             let errorList = errors.joined(separator: ", ")
             return "All parallel agents failed: [\(errorList)]"
+        case let .hiveRuntimeUnavailable(reason):
+            return "Hive runtime unavailable: \(reason)"
+        case let .workflowInterrupted(reason):
+            return "Workflow interrupted: \(reason)"
+        case let .humanApprovalTimeout(prompt):
+            return "Human approval timed out for: \(prompt)"
+        case let .humanApprovalRejected(prompt, reason):
+            return "Human approval rejected for '\(prompt)': \(reason)"
         }
     }
 }
@@ -89,6 +111,14 @@ extension OrchestrationError: CustomDebugStringConvertible {
             return "OrchestrationError.mergeStrategyFailed(reason: \(reason))"
         case let .allAgentsFailed(errors):
             return "OrchestrationError.allAgentsFailed(errors: \(errors))"
+        case let .hiveRuntimeUnavailable(reason):
+            return "OrchestrationError.hiveRuntimeUnavailable(reason: \(reason))"
+        case let .workflowInterrupted(reason):
+            return "OrchestrationError.workflowInterrupted(reason: \(reason))"
+        case let .humanApprovalTimeout(prompt):
+            return "OrchestrationError.humanApprovalTimeout(prompt: \(prompt))"
+        case let .humanApprovalRejected(prompt, reason):
+            return "OrchestrationError.humanApprovalRejected(prompt: \(prompt), reason: \(reason))"
         }
     }
 }

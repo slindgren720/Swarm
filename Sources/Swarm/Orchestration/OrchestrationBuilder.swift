@@ -1176,7 +1176,6 @@ public struct Orchestration: Sendable, OrchestratorProtocol {
             return AgentResult(output: input)
         }
 
-#if SWARM_HIVE_RUNTIME && canImport(HiveCore)
         return try await OrchestrationHiveEngine.execute(
             steps: steps,
             input: input,
@@ -1185,72 +1184,11 @@ public struct Orchestration: Sendable, OrchestratorProtocol {
             orchestrator: self,
             orchestratorName: orchestratorName,
             handoffs: handoffs,
+            inferencePolicy: configuration.inferencePolicy,
+            hiveRunOptionsOverride: configuration.hiveRunOptionsOverride,
             onIterationStart: onIterationStart,
             onIterationEnd: onIterationEnd
         )
-#else
-        let startTime = ContinuousClock.now
-        let context = AgentContext(input: input)
-        let stepContext = OrchestrationStepContext(
-            agentContext: context,
-            session: session,
-            hooks: hooks,
-            orchestrator: self,
-            orchestratorName: orchestratorName,
-            handoffs: handoffs
-        )
-        await context.recordExecution(agentName: orchestratorName)
-
-        var currentInput = input
-        var allToolCalls: [ToolCall] = []
-        var allToolResults: [ToolResult] = []
-        var totalIterations = 0
-        var allMetadata: [String: SendableValue] = [:]
-        allMetadata["orchestration.engine"] = .string("swift")
-
-        for (index, step) in steps.enumerated() {
-            if Task.isCancelled {
-                throw AgentError.cancelled
-            }
-
-            onIterationStart?(index + 1)
-
-            let result = try await step.execute(currentInput, context: stepContext)
-
-            allToolCalls.append(contentsOf: result.toolCalls)
-            allToolResults.append(contentsOf: result.toolResults)
-            totalIterations += result.iterationCount
-
-            for (key, value) in result.metadata {
-                // Preserve last-write-wins metadata at top-level for convenience.
-                // Namespaced copies are also stored for full provenance.
-                allMetadata[key] = value
-                allMetadata["orchestration.step_\(index).\(key)"] = value
-            }
-
-            await context.setPreviousOutput(result)
-            currentInput = result.output
-
-            onIterationEnd?(index + 1)
-        }
-
-        let duration = ContinuousClock.now - startTime
-        allMetadata["orchestration.total_steps"] = .int(steps.count)
-        allMetadata["orchestration.total_duration"] = .double(
-            Double(duration.components.seconds) +
-                Double(duration.components.attoseconds) / 1e18
-        )
-
-        return AgentResult(
-            output: currentInput,
-            toolCalls: allToolCalls,
-            toolResults: allToolResults,
-            iterationCount: totalIterations,
-            duration: duration,
-            tokenUsage: nil,
-            metadata: allMetadata
-        )
-#endif
     }
 
     private func applyGroupMetadataIfNeeded(to result: AgentResult) -> AgentResult {
