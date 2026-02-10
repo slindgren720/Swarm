@@ -28,7 +28,7 @@ struct ModelRouterTests {
             clock: TestClock(),
             logger: TestLogger(),
             model: nil,
-            modelRouter: AnyHiveModelRouter(router),
+            modelRouter: router,
             tools: AnyHiveToolRegistry(EmptyToolRegistry()),
             checkpointStore: nil
         )
@@ -66,7 +66,7 @@ struct ModelRouterTests {
             clock: TestClock(),
             logger: TestLogger(),
             model: AnyHiveModelClient(directClient),
-            modelRouter: AnyHiveModelRouter(router),
+            modelRouter: router,
             tools: AnyHiveToolRegistry(EmptyToolRegistry()),
             checkpointStore: nil
         )
@@ -108,7 +108,7 @@ struct ModelRouterTests {
             handoffs: [],
             inferencePolicy: nil,
             hiveRunOptionsOverride: nil,
-            modelRouter: AnyHiveModelRouter(router),
+            modelRouter: router,
             onIterationStart: nil,
             onIterationEnd: nil
         )
@@ -133,7 +133,7 @@ struct ModelRouterTests {
             clock: TestClock(),
             logger: TestLogger(),
             model: nil,
-            modelRouter: AnyHiveModelRouter(router),
+            modelRouter: router,
             tools: AnyHiveToolRegistry(EmptyToolRegistry()),
             checkpointStore: nil
         )
@@ -164,7 +164,7 @@ struct ModelRouterTests {
             clock: TestClock(),
             logger: TestLogger(),
             model: nil,
-            modelRouter: AnyHiveModelRouter(router),
+            modelRouter: router,
             tools: AnyHiveToolRegistry(EmptyToolRegistry()),
             checkpointStore: nil
         )

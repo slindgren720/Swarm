@@ -4,6 +4,7 @@
 // Tests for the streaming event bridge in HiveBackedAgent.
 
 import Foundation
+import Swarm
 import Testing
 @testable import HiveSwarm
 

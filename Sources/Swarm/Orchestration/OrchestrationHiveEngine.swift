@@ -104,7 +104,7 @@ enum OrchestrationHiveEngine {
         checkpointPolicy: HiveCheckpointPolicy = .disabled,
         checkpointStore: AnyHiveCheckpointStore<Schema>? = nil,
         modelClient: AnyHiveModelClient? = nil,
-        modelRouter: AnyHiveModelRouter? = nil,
+        modelRouter: (any HiveModelRouter)? = nil,
         toolRegistry: AnyHiveToolRegistry? = nil,
         inferenceHints: HiveInferenceHints? = nil,
         onIterationStart: (@Sendable (Int) -> Void)?,

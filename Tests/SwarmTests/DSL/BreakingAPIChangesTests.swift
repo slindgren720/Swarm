@@ -97,6 +97,8 @@ struct BreakingAPIChangesTests {
         }
 
         let result = try await workflow.run("x")
+        print("DEBUG metadata keys: \(result.metadata.keys.sorted())")
+        print("DEBUG metadata: \(result.metadata)")
         #expect(result.metadata["group.total_steps"]?.intValue == 2)
         #expect(result.metadata["group.step_0.note"]?.stringValue == "first")
         #expect(result.metadata["orchestration.step_0.note"]?.stringValue == "first")
