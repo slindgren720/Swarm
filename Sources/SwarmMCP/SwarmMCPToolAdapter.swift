@@ -1,4 +1,5 @@
 import Foundation
+import Swarm
 
 /// Tool catalog boundary for exposing Swarm tools over MCP.
 public protocol SwarmMCPToolCatalog: Sendable {
@@ -44,4 +45,3 @@ public actor SwarmMCPToolRegistryAdapter: SwarmMCPToolCatalog, SwarmMCPToolExecu
         try await registry.execute(toolNamed: toolName, arguments: arguments)
     }
 }
-

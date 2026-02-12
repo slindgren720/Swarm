@@ -1,5 +1,6 @@
 import Foundation
 import MCP
+import Swarm
 
 enum SwarmMCPCallToolOutcome {
     case success(CallTool.Result)

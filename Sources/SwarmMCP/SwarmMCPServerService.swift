@@ -1,5 +1,6 @@
 import Foundation
 import MCP
+import Swarm
 
 /// Runtime service that exposes Swarm tools through an MCP server.
 public actor SwarmMCPServerService {

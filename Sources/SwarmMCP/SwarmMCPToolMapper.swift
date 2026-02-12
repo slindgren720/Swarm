@@ -1,5 +1,6 @@
 import Foundation
 import MCP
+import Swarm
 
 enum SwarmMCPToolMapper {
     static func mapSchemas(_ schemas: [ToolSchema]) -> [MCP.Tool] {

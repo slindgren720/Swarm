@@ -1,6 +1,7 @@
 import Foundation
 import MCP
 @testable import Swarm
+import SwarmMCP
 import Testing
 
 @Suite("SwarmMCPServerService")

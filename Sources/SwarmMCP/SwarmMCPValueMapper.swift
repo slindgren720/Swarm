@@ -1,5 +1,6 @@
 import Foundation
 import MCP
+import Swarm
 
 enum SwarmMCPValueMapper {
     static func mcpValue(from value: SendableValue) -> Value {

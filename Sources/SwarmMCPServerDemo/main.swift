@@ -1,5 +1,6 @@
 import Foundation
 import Swarm
+import SwarmMCP
 
 @main
 struct SwarmMCPServerDemo {
@@ -26,4 +27,3 @@ struct SwarmMCPServerDemo {
         await service.waitUntilCompleted()
     }
 }
-

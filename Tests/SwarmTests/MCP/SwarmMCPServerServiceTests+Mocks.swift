@@ -2,6 +2,7 @@ import Foundation
 import Logging
 import MCP
 @testable import Swarm
+import SwarmMCP
 
 actor SwarmMCPToolCatalogStub: SwarmMCPToolCatalog {
     private var schemas: [ToolSchema]
