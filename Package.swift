@@ -27,7 +27,7 @@ if includeDemo {
 }
 
 var packageDependencies: [Package.Dependency] = [
-    .package(url: "https://github.com/swiftlang/swift-syntax.git", "602.0.0"..<"603.0.0"),
+    .package(url: "https://github.com/swiftlang/swift-syntax.git", "600.0.0"..<"603.0.0"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.5.0"),
     .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.10.0")
 ]
@@ -48,7 +48,7 @@ if useLocalDependencies {
             from: "0.1.3"
         )
     )
-    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.1", traits: ["OpenAI", "Anthropic", "OpenRouter"]))
+    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "1.0.0", traits: ["OpenAI", "Anthropic", "OpenRouter"]))
 }
 
 packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
