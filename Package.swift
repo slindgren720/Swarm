@@ -48,7 +48,7 @@ if useLocalDependencies {
             from: "0.1.3"
         )
     )
-    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "1.0.0"))
+    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "0.3.1", traits: ["OpenAI", "Anthropic", "OpenRouter"]))
 }
 
 packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
