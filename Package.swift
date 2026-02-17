@@ -40,7 +40,7 @@ if useLocalDependencies {
     }) ?? "../Wax"
 
     packageDependencies.append(.package(path: waxPath))
-    packageDependencies.append(.package(path: "../Conduit", traits: ["OpenAI", "Anthropic", "OpenRouter"]))
+    packageDependencies.append(.package(path: "../Conduit"))
 } else {
     packageDependencies.append(
         .package(
@@ -48,7 +48,7 @@ if useLocalDependencies {
             from: "0.1.3"
         )
     )
-    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "1.0.0", traits: ["OpenAI", "Anthropic", "OpenRouter"]))
+    packageDependencies.append(.package(url: "https://github.com/christopherkarani/Conduit", from: "1.0.0"))
 }
 
 packageDependencies.append(.package(url: "https://github.com/christopherkarani/Hive", from: "0.1.0"))
